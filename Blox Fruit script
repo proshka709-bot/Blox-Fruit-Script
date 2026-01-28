@@ -20,6 +20,7 @@ _G.ReachAura = true -- Включено по умолчанию для удоб�
 _G.AutoStats = false -- Авто-статы
 _G.AttackDist = 3
 _G.MobileAttackOnly = true
+local CurrentTarget = nil
 
 -- Система отслеживания фруктов
 local FruitSpawnData = {
@@ -140,20 +141,106 @@ local function MakeDraggableAndClickable(obj, onClick)
 end
 
 -- Подключаем логику к кнопке
+local TabBar = Instance.new("Frame")
+TabBar.Parent = MainFrame
+TabBar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+TabBar.Size = UDim2.new(1, 0, 0.1, 0)
+TabBar.Position = UDim2.new(0, 0, 0.12, 0)
+TabBar.ZIndex = 104
+
+local TabFarm = Instance.new("TextButton")
+TabFarm.Parent = TabBar
+TabFarm.Size = UDim2.new(0.33, 0, 1, 0)
+TabFarm.Position = UDim2.new(0, 0, 0, 0)
+TabFarm.Text = "Фарм"
+TabFarm.Font = Enum.Font.SourceSansBold
+TabFarm.TextSize = 16
+TabFarm.TextColor3 = Color3.fromRGB(255, 255, 255)
+TabFarm.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+TabFarm.ZIndex = 105
+
+local TabFruit = Instance.new("TextButton")
+TabFruit.Parent = TabBar
+TabFruit.Size = UDim2.new(0.33, 0, 1, 0)
+TabFruit.Position = UDim2.new(0.33, 0, 0, 0)
+TabFruit.Text = "Фрукты"
+TabFruit.Font = Enum.Font.SourceSansBold
+TabFruit.TextSize = 16
+TabFruit.TextColor3 = Color3.fromRGB(255, 255, 255)
+TabFruit.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+TabFruit.ZIndex = 105
+
+local TabSettings = Instance.new("TextButton")
+TabSettings.Parent = TabBar
+TabSettings.Size = UDim2.new(0.34, 0, 1, 0)
+TabSettings.Position = UDim2.new(0.66, 0, 0, 0)
+TabSettings.Text = "Настройки"
+TabSettings.Font = Enum.Font.SourceSansBold
+TabSettings.TextSize = 16
+TabSettings.TextColor3 = Color3.fromRGB(255, 255, 255)
+TabSettings.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+TabSettings.ZIndex = 105
+
+local FarmFrame = Instance.new("Frame")
+FarmFrame.Parent = MainFrame
+FarmFrame.BackgroundTransparency = 1
+FarmFrame.Size = UDim2.new(1, 0, 0.78, 0)
+FarmFrame.Position = UDim2.new(0, 0, 0.22, 0)
+FarmFrame.Visible = true
+FarmFrame.ZIndex = 103
+
+local FruitFrame = Instance.new("Frame")
+FruitFrame.Parent = MainFrame
+FruitFrame.BackgroundTransparency = 1
+FruitFrame.Size = UDim2.new(1, 0, 0.78, 0)
+FruitFrame.Position = UDim2.new(0, 0, 0.22, 0)
+FruitFrame.Visible = false
+FruitFrame.ZIndex = 103
+
+local SettingsFrame = Instance.new("Frame")
+SettingsFrame.Parent = MainFrame
+SettingsFrame.BackgroundTransparency = 1
+SettingsFrame.Size = UDim2.new(1, 0, 0.78, 0)
+SettingsFrame.Position = UDim2.new(0, 0, 0.22, 0)
+SettingsFrame.Visible = false
+SettingsFrame.ZIndex = 103
+
+local function ShowTab(tab)
+    if tab == "Farm" then
+        FarmFrame.Visible = true
+        FruitFrame.Visible = false
+        SettingsFrame.Visible = false
+    elseif tab == "Fruit" then
+        FarmFrame.Visible = false
+        FruitFrame.Visible = true
+        SettingsFrame.Visible = false
+    else
+        FarmFrame.Visible = false
+        FruitFrame.Visible = false
+        SettingsFrame.Visible = true
+    end
+end
+
+TabFarm.Activated:Connect(function() ShowTab("Farm") end)
+TabFruit.Activated:Connect(function() ShowTab("Fruit") end)
+TabSettings.Activated:Connect(function() ShowTab("Settings") end)
+
 MakeDraggableAndClickable(ToggleBtn, function()
     MainFrame.Visible = not MainFrame.Visible
 end)
 
 -- Счетчик кнопок для правильного позиционирования
-local ButtonCount = 0
+local ButtonCountFarm = 0
+local ButtonCountFruit = 0
+local ButtonCountSettings = 0
 
 -- Функция создания кнопок (Toggle)
-local function CreateSwitch(text, defaultVal, callback)
+local function CreateSwitch(parent, index, text, defaultVal, callback)
     local btn = Instance.new("TextButton")
-    btn.Parent = MainFrame
+    btn.Parent = parent
     btn.BackgroundColor3 = defaultVal and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
     btn.Size = UDim2.new(0.9, 0, 0.10, 0) -- Компактный размер
-    btn.Position = UDim2.new(0.05, 0, 0.15 + ButtonCount * 0.11, 0) -- Плотная расстановка
+    btn.Position = UDim2.new(0.05, 0, 0.05 + index * 0.11, 0)
     btn.Text = text .. ": " .. (defaultVal and "ON" or "OFF")
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.SourceSansBold
@@ -170,18 +257,16 @@ local function CreateSwitch(text, defaultVal, callback)
         btn.BackgroundColor3 = isOn and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
         callback(isOn)
     end)
-    
-    ButtonCount = ButtonCount + 1
 end
 
--- Добавляем кнопки
-CreateSwitch("Auto Farm", _G.AutoFarm, function(val) _G.AutoFarm = val end)
-CreateSwitch("Auto Quest", _G.AutoQuest, function(val) _G.AutoQuest = val end)
-CreateSwitch("Fruit ESP", _G.FruitESP, function(val) _G.FruitESP = val end)
-CreateSwitch("Auto Collect Fruit", _G.AutoCollectFruit, function(val) _G.AutoCollectFruit = val end)
-CreateSwitch("Server Fruit Hop", _G.ServerFruitHop, function(val) _G.ServerFruitHop = val end)
-CreateSwitch("Auto Stats (Melee)", _G.AutoStats, function(val) _G.AutoStats = val end)
-CreateSwitch("Hitbox Reach", _G.ReachAura, function(val) _G.ReachAura = val end)
+CreateSwitch(FarmFrame, ButtonCountFarm, "Auto Farm", _G.AutoFarm, function(val) _G.AutoFarm = val end); ButtonCountFarm = ButtonCountFarm + 1
+CreateSwitch(FarmFrame, ButtonCountFarm, "Auto Quest", _G.AutoQuest, function(val) _G.AutoQuest = val end); ButtonCountFarm = ButtonCountFarm + 1
+CreateSwitch(FarmFrame, ButtonCountFarm, "Hitbox Reach", _G.ReachAura, function(val) _G.ReachAura = val end); ButtonCountFarm = ButtonCountFarm + 1
+CreateSwitch(FruitFrame, ButtonCountFruit, "Fruit ESP", _G.FruitESP, function(val) _G.FruitESP = val end); ButtonCountFruit = ButtonCountFruit + 1
+CreateSwitch(FruitFrame, ButtonCountFruit, "Auto Collect Fruit", _G.AutoCollectFruit, function(val) _G.AutoCollectFruit = val end); ButtonCountFruit = ButtonCountFruit + 1
+CreateSwitch(FruitFrame, ButtonCountFruit, "Server Fruit Hop", _G.ServerFruitHop, function(val) _G.ServerFruitHop = val end); ButtonCountFruit = ButtonCountFruit + 1
+CreateSwitch(SettingsFrame, ButtonCountSettings, "Auto Stats (Melee)", _G.AutoStats, function(val) _G.AutoStats = val end); ButtonCountSettings = ButtonCountSettings + 1
+CreateSwitch(SettingsFrame, ButtonCountSettings, "Mobile Attack Only", _G.MobileAttackOnly, function(val) _G.MobileAttackOnly = val end); ButtonCountSettings = ButtonCountSettings + 1
 
 -- Кнопка закрытия (X)
 local CloseBtn = Instance.new("TextButton")
@@ -390,31 +475,44 @@ task.spawn(function()
         if _G.AutoFarm and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
             pcall(function()
                 -- 1. Квест
-                if _G.AutoQuest then
-                    local gui = Player.PlayerGui
-                    if gui.Main.Quest.Visible == false then
-                        local lvl = Player.Data.Level.Value
-                        local questConfig = GetCurrentQuestConfig(lvl)
-                        if questConfig then
-                            ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", questConfig.Name, questConfig.Id)
+    if _G.AutoQuest then
+                    local gui = Player:FindFirstChild("PlayerGui")
+                    if gui and gui:FindFirstChild("Main") and gui.Main:FindFirstChild("Quest") then
+                        if gui.Main.Quest.Visible == false then
+                            local lvl = Player.Data.Level.Value
+                            local questConfig = GetCurrentQuestConfig(lvl)
+                            if questConfig then
+                                ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", questConfig.Name, questConfig.Id)
+                            end
                         end
                     end
                 end
 
                 -- 2. Цель
                 local targetName = GetQuestTarget()
-                local target = nil
-                local enemies = Workspace:FindFirstChild("Enemies")
-                if enemies then
-                    for _, v in pairs(enemies:GetChildren()) do
-                        if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
-                            if not targetName or string.find(v.Name, targetName) then
-                                target = v
-                                break
+                if CurrentTarget and (not CurrentTarget.Parent or not CurrentTarget:FindFirstChild("Humanoid") or CurrentTarget.Humanoid.Health <= 0) then
+                    CurrentTarget = nil
+                end
+                if not CurrentTarget then
+                    local enemies = Workspace:FindFirstChild("Enemies")
+                    local nearest = nil
+                    local nearestDist = math.huge
+                    if enemies and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+                        for _, v in pairs(enemies:GetChildren()) do
+                            if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
+                                if not targetName or string.find(v.Name, targetName) then
+                                    local dist = (Player.Character.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude
+                                    if dist < nearestDist then
+                                        nearestDist = dist
+                                        nearest = v
+                                    end
+                                end
                             end
                         end
                     end
+                    CurrentTarget = nearest
                 end
+                local target = CurrentTarget
 
                 -- 3. Атака
                 if target then
