@@ -30,6 +30,8 @@ _G.AutoBuyRandomFruit = false -- Авто-покупка фруктов
 _G.SmartAI = false -- Умный ИИ (Авто-скиллы)
 _G.AutoPvP = false -- Авто-ПвП (охота на игроков)
 _G.AimBot = false -- Аимбот (камера)
+_G.PlayerESP = false -- ЕСП Игроков (Валлхак)
+_G.AutoFarmChests = false -- Авто-фарм сундуков
 local CurrentTarget = nil
 
 -- Система отслеживания фруктов
@@ -96,7 +98,7 @@ UICornerFrame.Parent = MainFrame
 -- Заголовок
 local Title = Instance.new("TextLabel")
 Title.Parent = MainFrame
-Title.Text = "BLOX FRUITS SCRIPT v3.4 (AI PRO)"
+Title.Text = "BLOX FRUITS SCRIPT v3.5 (ESP + Chests)"
 Title.Size = UDim2.new(1, 0, 0.12, 0)
 Title.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -351,11 +353,13 @@ CreateSwitch(FruitFrame, ButtonCountFruit, "Fruit ESP", _G.FruitESP, function(va
 CreateSwitch(FruitFrame, ButtonCountFruit, "Auto Collect Fruit", _G.AutoCollectFruit, function(val) _G.AutoCollectFruit = val end); ButtonCountFruit = ButtonCountFruit + 1
 CreateSwitch(FruitFrame, ButtonCountFruit, "Server Fruit Hop", _G.ServerFruitHop, function(val) _G.ServerFruitHop = val end); ButtonCountFruit = ButtonCountFruit + 1
 CreateSwitch(FruitFrame, ButtonCountFruit, "Chest ESP", _G.ChestESP, function(val) _G.ChestESP = val end); ButtonCountFruit = ButtonCountFruit + 1
+CreateSwitch(FruitFrame, ButtonCountFruit, "Auto Farm Chests", _G.AutoFarmChests, function(val) _G.AutoFarmChests = val end); ButtonCountFruit = ButtonCountFruit + 1
 CreateSwitch(FruitFrame, ButtonCountFruit, "Auto Buy Random Fruit", _G.AutoBuyRandomFruit, function(val) _G.AutoBuyRandomFruit = val end); ButtonCountFruit = ButtonCountFruit + 1
 
 CreateSwitch(PvPFrame, ButtonCountPvP, "Smart AI (Auto Skills)", _G.SmartAI, function(val) _G.SmartAI = val end); ButtonCountPvP = ButtonCountPvP + 1
 CreateSwitch(PvPFrame, ButtonCountPvP, "Auto PvP (Hunt Players)", _G.AutoPvP, function(val) _G.AutoPvP = val end); ButtonCountPvP = ButtonCountPvP + 1
 CreateSwitch(PvPFrame, ButtonCountPvP, "Aim Bot (Camera Lock)", _G.AimBot, function(val) _G.AimBot = val end); ButtonCountPvP = ButtonCountPvP + 1
+CreateSwitch(PvPFrame, ButtonCountPvP, "Player ESP (Wallhack)", _G.PlayerESP, function(val) _G.PlayerESP = val end); ButtonCountPvP = ButtonCountPvP + 1
 
 CreateSwitch(SettingsFrame, ButtonCountSettings, "Auto Stats", _G.AutoStats, function(val) _G.AutoStats = val end); ButtonCountSettings = ButtonCountSettings + 1
 
@@ -1086,6 +1090,93 @@ task.spawn(function()
                     end
                 end
             end)
+        end
+    end
+end)
+
+-- Player ESP (Wallhack)
+task.spawn(function()
+    while task.wait(1) do
+        if _G.PlayerESP then
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                    -- Подсветка (Highlight)
+                    if not p.Character:FindFirstChild("ESPHighlight") then
+                        local hl = Instance.new("Highlight")
+                        hl.Name = "ESPHighlight"
+                        hl.Parent = p.Character
+                        hl.FillColor = Color3.fromRGB(255, 0, 0)
+                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                        hl.FillTransparency = 0.5
+                        hl.OutlineTransparency = 0
+                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- Видно сквозь стены
+                    end
+                    
+                    -- Текст над головой
+                    if not p.Character.HumanoidRootPart:FindFirstChild("ESPName") then
+                        local bg = Instance.new("BillboardGui")
+                        bg.Name = "ESPName"
+                        bg.Parent = p.Character.HumanoidRootPart
+                        bg.Adornee = p.Character.HumanoidRootPart
+                        bg.Size = UDim2.new(0, 200, 0, 50)
+                        bg.StudsOffset = Vector3.new(0, 3, 0)
+                        bg.AlwaysOnTop = true
+                        
+                        local txt = Instance.new("TextLabel")
+                        txt.Parent = bg
+                        txt.Size = UDim2.new(1, 0, 1, 0)
+                        txt.BackgroundTransparency = 1
+                        txt.Text = p.Name
+                        txt.TextColor3 = Color3.fromRGB(255, 0, 0)
+                        txt.TextStrokeTransparency = 0
+                        txt.Font = Enum.Font.SourceSansBold
+                        txt.TextSize = 14
+                    else
+                        -- Обновляем дистанцию
+                        local dist = math.floor((Player.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude)
+                        p.Character.HumanoidRootPart.ESPName.TextLabel.Text = p.Name .. " [" .. dist .. "m]"
+                    end
+                end
+            end
+        else
+            -- Удаляем ESP если выключено
+            for _, p in pairs(Players:GetPlayers()) do
+                if p.Character then
+                    if p.Character:FindFirstChild("ESPHighlight") then p.Character.ESPHighlight:Destroy() end
+                    if p.Character:FindFirstChild("HumanoidRootPart") and p.Character.HumanoidRootPart:FindFirstChild("ESPName") then
+                        p.Character.HumanoidRootPart.ESPName:Destroy()
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Auto Farm Chests
+task.spawn(function()
+    while task.wait() do
+        if _G.AutoFarmChests and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+             -- Ищем сундуки
+             local nearestChest = nil
+             local nearestDist = math.huge
+             
+             for _, v in pairs(Workspace:GetDescendants()) do
+                 if v.Name:find("Chest") or v.Name:find("Treasure") then
+                     if v:IsA("Part") or v:IsA("MeshPart") then
+                         local dist = (Player.Character.HumanoidRootPart.Position - v.Position).Magnitude
+                         if dist < nearestDist then
+                             nearestDist = dist
+                             nearestChest = v
+                         end
+                     end
+                 end
+             end
+             
+             if nearestChest then
+                 -- Телепорт к сундуку
+                 Player.Character.HumanoidRootPart.CFrame = nearestChest.CFrame
+                 task.wait(0.5) -- Ждем сбора
+             end
         end
     end
 end)
