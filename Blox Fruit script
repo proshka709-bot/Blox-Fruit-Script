@@ -20,6 +20,11 @@ _G.ReachAura = true -- Включено по умолчанию для удоб�
 _G.AutoStats = false -- Авто-статы
 _G.AttackDist = 3
 _G.MobileAttackOnly = true
+_G.AutoHaki = true -- Авто Хаки
+_G.ChestESP = false -- ЕСП Сундуков
+_G.SpeedBoost = false -- Скорость
+_G.WalkOnWater = false -- Ходьба по воде
+_G.InfGeppo = false -- Бесконечные прыжки
 local CurrentTarget = nil
 
 -- Система отслеживания фруктов
@@ -86,7 +91,7 @@ UICornerFrame.Parent = MainFrame
 -- Заголовок
 local Title = Instance.new("TextLabel")
 Title.Parent = MainFrame
-Title.Text = "BLOX FRUITS SCRIPT v3.1 (Острова)"
+Title.Text = "BLOX FRUITS SCRIPT v3.2 (Super)"
 Title.Size = UDim2.new(1, 0, 0.12, 0)
 Title.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -313,8 +318,13 @@ CreateSwitch(FarmFrame, ButtonCountFarm, "Hitbox Reach", _G.ReachAura, function(
 CreateSwitch(FruitFrame, ButtonCountFruit, "Fruit ESP", _G.FruitESP, function(val) _G.FruitESP = val end); ButtonCountFruit = ButtonCountFruit + 1
 CreateSwitch(FruitFrame, ButtonCountFruit, "Auto Collect Fruit", _G.AutoCollectFruit, function(val) _G.AutoCollectFruit = val end); ButtonCountFruit = ButtonCountFruit + 1
 CreateSwitch(FruitFrame, ButtonCountFruit, "Server Fruit Hop", _G.ServerFruitHop, function(val) _G.ServerFruitHop = val end); ButtonCountFruit = ButtonCountFruit + 1
+CreateSwitch(FruitFrame, ButtonCountFruit, "Chest ESP", _G.ChestESP, function(val) _G.ChestESP = val end); ButtonCountFruit = ButtonCountFruit + 1
 CreateSwitch(SettingsFrame, ButtonCountSettings, "Auto Stats (Melee)", _G.AutoStats, function(val) _G.AutoStats = val end); ButtonCountSettings = ButtonCountSettings + 1
 CreateSwitch(SettingsFrame, ButtonCountSettings, "Mobile Attack Only", _G.MobileAttackOnly, function(val) _G.MobileAttackOnly = val end); ButtonCountSettings = ButtonCountSettings + 1
+CreateSwitch(SettingsFrame, ButtonCountSettings, "Auto Aura (Buso)", _G.AutoHaki, function(val) _G.AutoHaki = val end); ButtonCountSettings = ButtonCountSettings + 1
+CreateSwitch(SettingsFrame, ButtonCountSettings, "Speed Boost (60)", _G.SpeedBoost, function(val) _G.SpeedBoost = val end); ButtonCountSettings = ButtonCountSettings + 1
+CreateSwitch(SettingsFrame, ButtonCountSettings, "Walk On Water", _G.WalkOnWater, function(val) _G.WalkOnWater = val end); ButtonCountSettings = ButtonCountSettings + 1
+CreateSwitch(SettingsFrame, ButtonCountSettings, "Infinite Geppo", _G.InfGeppo, function(val) _G.InfGeppo = val end); ButtonCountSettings = ButtonCountSettings + 1
 
 local IslandDefs = {
     {label="Стартовый остров", req=0, patterns={"starter","start","pirate"}},
@@ -638,9 +648,17 @@ task.spawn(function()
 
                 -- 2. Цель
                 local targetName = GetQuestTarget()
-                if CurrentTarget and (not CurrentTarget.Parent or not CurrentTarget:FindFirstChild("Humanoid") or CurrentTarget.Humanoid.Health <= 0) then
-                    CurrentTarget = nil
+                
+                -- Проверка текущей цели: жива ли она и соответствует ли квесту
+                if CurrentTarget then
+                    if not CurrentTarget.Parent or not CurrentTarget:FindFirstChild("Humanoid") or CurrentTarget.Humanoid.Health <= 0 then
+                        CurrentTarget = nil
+                    elseif targetName and not string.find(CurrentTarget.Name, targetName) then
+                        -- Если у нас есть квест, но мы бьем кого-то другого -> сброс
+                        CurrentTarget = nil
+                    end
                 end
+                
                 if not CurrentTarget then
                     local enemies = Workspace:FindFirstChild("Enemies")
                     local nearest = nil
@@ -648,7 +666,27 @@ task.spawn(function()
                     if enemies and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
                         for _, v in pairs(enemies:GetChildren()) do
                             if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
-                                if not targetName or string.find(v.Name, targetName) then
+                                -- Логика приоритета:
+                                -- 1. Если есть квест (targetName), ищем СТРОГО мобов с этим именем
+                                -- 2. Если квеста нет, ищем ближайшего любого
+                                
+                                local match = false
+                                if targetName then
+                                    if string.find(v.Name, targetName) then
+                                        match = true
+                                    end
+                                    -- Особая проверка для боссов (иногда имя в квесте чуть отличается)
+                                    if not match and (string.find(v.Name, "Boss") or v.Humanoid.MaxHealth > 10000) then
+                                         -- Если это босс и его имя похоже на квест
+                                         if string.find(targetName, v.Name) or string.find(v.Name, targetName) then
+                                             match = true
+                                         end
+                                    end
+                                else
+                                    match = true -- Берем любого, если нет квеста
+                                end
+                                
+                                if match then
                                     local dist = (Player.Character.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude
                                     if dist < nearestDist then
                                         nearestDist = dist
@@ -917,3 +955,100 @@ end)
 print("✅ Blox Fruits Script v3 загружен!")
 print("📱 Нажми кнопку MENU для открытия")
 print("🍎 Реальное отслеживание спавна фруктов активировано!")
+
+-- // НОВЫЙ ФУНКЦИОНАЛ //
+
+-- Auto Aura (Haki)
+task.spawn(function()
+    while task.wait(5) do
+        if _G.AutoHaki then
+             pcall(function()
+                 local hasHaki = Player.Character and Player.Character:FindFirstChild("HasBuso")
+                 if not hasHaki then
+                     ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
+                 end
+             end)
+        end
+    end
+end)
+
+-- Chest ESP
+task.spawn(function()
+    while task.wait(2) do
+        pcall(function()
+             if _G.ChestESP then
+                 for _, v in pairs(Workspace:GetDescendants()) do
+                     if string.find(v.Name, "Chest") and (v:IsA("Part") or v:IsA("MeshPart")) then
+                         if not v:FindFirstChild("ChestESP") then
+                             local b = Instance.new("BillboardGui")
+                             b.Name = "ChestESP"
+                             b.Adornee = v
+                             b.Size = UDim2.new(0, 100, 0, 30)
+                             b.StudsOffset = Vector3.new(0, 2, 0)
+                             b.AlwaysOnTop = true
+                             
+                             local t = Instance.new("TextLabel")
+                             t.Parent = b
+                             t.Size = UDim2.new(1,0,1,0)
+                             t.BackgroundTransparency = 1
+                             t.TextColor3 = Color3.fromRGB(255, 255, 0) -- Желтый
+                             t.TextStrokeTransparency = 0
+                             t.Font = Enum.Font.SourceSansBold
+                             t.TextSize = 12
+                             t.Text = "Chest"
+                             b.Parent = v
+                         end
+                     end
+                 end
+             else
+                 for _, v in pairs(Workspace:GetDescendants()) do
+                     if v.Name == "ChestESP" then v:Destroy() end
+                 end
+             end
+        end)
+    end
+end)
+
+-- Speed Boost
+task.spawn(function()
+    while task.wait() do
+        if _G.SpeedBoost and Player.Character and Player.Character:FindFirstChild("Humanoid") then
+            Player.Character.Humanoid.WalkSpeed = 60
+        end
+    end
+end)
+
+-- Walk On Water (Jesus Mode)
+task.spawn(function()
+    local platform = Instance.new("Part")
+    platform.Name = "WaterWalker"
+    platform.Size = Vector3.new(20, 1, 20)
+    platform.Transparency = 0.8
+    platform.Anchored = true
+    platform.CanCollide = true
+    platform.Material = Enum.Material.Glass
+    platform.Color = Color3.fromRGB(0, 255, 255)
+    
+    while task.wait() do
+        if _G.WalkOnWater and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = Player.Character.HumanoidRootPart
+            -- Уровень воды обычно чуть ниже 0 или на 0, но лучше держать платформу прямо под ногами если мы над водой
+            -- В Blox Fruits вода не всегда на Y=0, но для простоты будем держать платформу под игроком
+            
+            -- Проверяем, над водой ли мы (Raycast вниз)
+            -- Но проще просто держать платформу под ногами, если включено
+            platform.Parent = Workspace
+            platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 3.5, hrp.Position.Z)
+        else
+            if platform.Parent then platform.Parent = nil end
+        end
+    end
+end)
+
+-- Infinite Geppo
+local UserInputService = game:GetService("UserInputService")
+UserInputService.JumpRequest:Connect(function()
+    if _G.InfGeppo and Player.Character and Player.Character:FindFirstChild("Humanoid") then
+        Player.Character.Humanoid:ChangeState("Jumping")
+    end
+end)
