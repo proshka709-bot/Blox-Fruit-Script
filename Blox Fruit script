@@ -150,7 +150,7 @@ TabBar.ZIndex = 104
 
 local TabFarm = Instance.new("TextButton")
 TabFarm.Parent = TabBar
-TabFarm.Size = UDim2.new(0.33, 0, 1, 0)
+TabFarm.Size = UDim2.new(0.25, 0, 1, 0)
 TabFarm.Position = UDim2.new(0, 0, 0, 0)
 TabFarm.Text = "Фарм"
 TabFarm.Font = Enum.Font.SourceSansBold
@@ -161,8 +161,8 @@ TabFarm.ZIndex = 105
 
 local TabFruit = Instance.new("TextButton")
 TabFruit.Parent = TabBar
-TabFruit.Size = UDim2.new(0.33, 0, 1, 0)
-TabFruit.Position = UDim2.new(0.33, 0, 0, 0)
+TabFruit.Size = UDim2.new(0.25, 0, 1, 0)
+TabFruit.Position = UDim2.new(0.25, 0, 0, 0)
 TabFruit.Text = "Фрукты"
 TabFruit.Font = Enum.Font.SourceSansBold
 TabFruit.TextSize = 16
@@ -172,14 +172,25 @@ TabFruit.ZIndex = 105
 
 local TabSettings = Instance.new("TextButton")
 TabSettings.Parent = TabBar
-TabSettings.Size = UDim2.new(0.34, 0, 1, 0)
-TabSettings.Position = UDim2.new(0.66, 0, 0, 0)
+TabSettings.Size = UDim2.new(0.25, 0, 1, 0)
+TabSettings.Position = UDim2.new(0.5, 0, 0, 0)
 TabSettings.Text = "Настройки"
 TabSettings.Font = Enum.Font.SourceSansBold
 TabSettings.TextSize = 16
 TabSettings.TextColor3 = Color3.fromRGB(255, 255, 255)
 TabSettings.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
 TabSettings.ZIndex = 105
+
+local TabIslands = Instance.new("TextButton")
+TabIslands.Parent = TabBar
+TabIslands.Size = UDim2.new(0.25, 0, 1, 0)
+TabIslands.Position = UDim2.new(0.75, 0, 0, 0)
+TabIslands.Text = "Острова"
+TabIslands.Font = Enum.Font.SourceSansBold
+TabIslands.TextSize = 16
+TabIslands.TextColor3 = Color3.fromRGB(255, 255, 255)
+TabIslands.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+TabIslands.ZIndex = 105
 
 local FarmFrame = Instance.new("Frame")
 FarmFrame.Parent = MainFrame
@@ -205,25 +216,42 @@ SettingsFrame.Position = UDim2.new(0, 0, 0.22, 0)
 SettingsFrame.Visible = false
 SettingsFrame.ZIndex = 103
 
+local IslandsFrame = Instance.new("Frame")
+IslandsFrame.Parent = MainFrame
+IslandsFrame.BackgroundTransparency = 1
+IslandsFrame.Size = UDim2.new(1, 0, 0.78, 0)
+IslandsFrame.Position = UDim2.new(0, 0, 0.22, 0)
+IslandsFrame.Visible = false
+IslandsFrame.ZIndex = 103
+
 local function ShowTab(tab)
     if tab == "Farm" then
         FarmFrame.Visible = true
         FruitFrame.Visible = false
         SettingsFrame.Visible = false
+        IslandsFrame.Visible = false
     elseif tab == "Fruit" then
         FarmFrame.Visible = false
         FruitFrame.Visible = true
         SettingsFrame.Visible = false
-    else
+        IslandsFrame.Visible = false
+    elseif tab == "Settings" then
         FarmFrame.Visible = false
         FruitFrame.Visible = false
         SettingsFrame.Visible = true
+        IslandsFrame.Visible = false
+    else
+        FarmFrame.Visible = false
+        FruitFrame.Visible = false
+        SettingsFrame.Visible = false
+        IslandsFrame.Visible = true
     end
 end
 
 TabFarm.Activated:Connect(function() ShowTab("Farm") end)
 TabFruit.Activated:Connect(function() ShowTab("Fruit") end)
 TabSettings.Activated:Connect(function() ShowTab("Settings") end)
+TabIslands.Activated:Connect(function() ShowTab("Islands") end)
 
 MakeDraggableAndClickable(ToggleBtn, function()
     MainFrame.Visible = not MainFrame.Visible
@@ -233,6 +261,7 @@ end)
 local ButtonCountFarm = 0
 local ButtonCountFruit = 0
 local ButtonCountSettings = 0
+local ButtonCountIslands = 0
 
 -- Функция создания кнопок (Toggle)
 local function CreateSwitch(parent, index, text, defaultVal, callback)
@@ -259,6 +288,25 @@ local function CreateSwitch(parent, index, text, defaultVal, callback)
     end)
 end
 
+local function CreateButton(parent, index, text, callback)
+    local btn = Instance.new("TextButton")
+    btn.Parent = parent
+    btn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+    btn.Size = UDim2.new(0.9, 0, 0.10, 0)
+    btn.Position = UDim2.new(0.05, 0, 0.05 + index * 0.11, 0)
+    btn.Text = text
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+    btn.ZIndex = 103
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.2, 0)
+    corner.Parent = btn
+    btn.Activated:Connect(function()
+        callback()
+    end)
+end
+
 CreateSwitch(FarmFrame, ButtonCountFarm, "Auto Farm", _G.AutoFarm, function(val) _G.AutoFarm = val end); ButtonCountFarm = ButtonCountFarm + 1
 CreateSwitch(FarmFrame, ButtonCountFarm, "Auto Quest", _G.AutoQuest, function(val) _G.AutoQuest = val end); ButtonCountFarm = ButtonCountFarm + 1
 CreateSwitch(FarmFrame, ButtonCountFarm, "Hitbox Reach", _G.ReachAura, function(val) _G.ReachAura = val end); ButtonCountFarm = ButtonCountFarm + 1
@@ -267,6 +315,73 @@ CreateSwitch(FruitFrame, ButtonCountFruit, "Auto Collect Fruit", _G.AutoCollectF
 CreateSwitch(FruitFrame, ButtonCountFruit, "Server Fruit Hop", _G.ServerFruitHop, function(val) _G.ServerFruitHop = val end); ButtonCountFruit = ButtonCountFruit + 1
 CreateSwitch(SettingsFrame, ButtonCountSettings, "Auto Stats (Melee)", _G.AutoStats, function(val) _G.AutoStats = val end); ButtonCountSettings = ButtonCountSettings + 1
 CreateSwitch(SettingsFrame, ButtonCountSettings, "Mobile Attack Only", _G.MobileAttackOnly, function(val) _G.MobileAttackOnly = val end); ButtonCountSettings = ButtonCountSettings + 1
+
+local IslandDefs = {
+    {label="Стартовый остров", req=0, patterns={"starter","start","pirate"}},
+    {label="Джунгли (15+)", req=15, patterns={"jungle"}},
+    {label="Деревня Пиратов (30+)", req=30, patterns={"pirate village","pirate"}},
+    {label="Пустыня (60+)", req=60, patterns={"desert"}},
+    {label="Средний Остров", req=0, patterns={"middle","middle town"}},
+    {label="Снежный Остров (90+)", req=90, patterns={"frozen","snow","frozen village"}},
+    {label="Морская Крепость (120+)", req=120, patterns={"marine fortress","marineford","marine"}},
+    {label="Скайпия (150+)", req=150, patterns={"sky","skypia","skylands"}},
+    {label="Тюрьма (190+)", req=190, patterns={"prison"}},
+    {label="Колизей (225+)", req=225, patterns={"colosseum"}},
+    {label="Магмовая Деревня (300+)", req=300, patterns={"magma village","magma"}},
+    {label="Подводный Город (375+)", req=375, patterns={"underwater city","underwater","fishman"}},
+    {label="Фонтанный Город (625+)", req=625, patterns={"fountain city","fountain"}}
+}
+
+local function GetIslandCFrame(def)
+    for _, pat in ipairs(def.patterns) do
+        local needle = string.lower(pat)
+        for _, d in ipairs(Workspace:GetDescendants()) do
+            local name = string.lower(d.Name)
+            if string.find(name, needle) then
+                if d:IsA("Model") then
+                    local part = d.PrimaryPart
+                    if not part then
+                        for _, c in ipairs(d:GetDescendants()) do
+                            if c:IsA("BasePart") then
+                                part = c
+                                break
+                            end
+                        end
+                    end
+                    if part then
+                        return part.CFrame + Vector3.new(0, 7, 0)
+                    end
+                elseif d:IsA("BasePart") then
+                    return d.CFrame + Vector3.new(0, 7, 0)
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function TeleportToIsland(def)
+    local lvl = 0
+    if Player.Data and Player.Data:FindFirstChild("Level") then
+        lvl = Player.Data.Level.Value
+    end
+    if lvl < def.req then
+        return
+    end
+    if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+        local cf = GetIslandCFrame(def)
+        if cf then
+            Player.Character.HumanoidRootPart.CFrame = cf
+        end
+    end
+end
+
+for _, def in ipairs(IslandDefs) do
+    CreateButton(IslandsFrame, ButtonCountIslands, def.label, function()
+        TeleportToIsland(def)
+    end)
+    ButtonCountIslands = ButtonCountIslands + 1
+end
 
 -- Кнопка закрытия (X)
 local CloseBtn = Instance.new("TextButton")
