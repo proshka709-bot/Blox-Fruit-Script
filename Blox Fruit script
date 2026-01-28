@@ -27,6 +27,9 @@ _G.WalkOnWater = false -- Ходьба по воде
 _G.InfGeppo = false -- Бесконечные прыжки
 _G.SelectStat = "Melee" -- Выбранный стат
 _G.AutoBuyRandomFruit = false -- Авто-покупка фруктов
+_G.SmartAI = false -- Умный ИИ (Авто-скиллы)
+_G.AutoPvP = false -- Авто-ПвП (охота на игроков)
+_G.AimBot = false -- Аимбот (камера)
 local CurrentTarget = nil
 
 -- Система отслеживания фруктов
@@ -93,7 +96,7 @@ UICornerFrame.Parent = MainFrame
 -- Заголовок
 local Title = Instance.new("TextLabel")
 Title.Parent = MainFrame
-Title.Text = "BLOX FRUITS SCRIPT v3.3 (Ultimate)"
+Title.Text = "BLOX FRUITS SCRIPT v3.4 (AI PRO)"
 Title.Size = UDim2.new(1, 0, 0.12, 0)
 Title.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -157,9 +160,9 @@ TabBar.ZIndex = 104
 
 local TabFarm = Instance.new("TextButton")
 TabFarm.Parent = TabBar
-TabFarm.Size = UDim2.new(0.25, 0, 1, 0)
+TabFarm.Size = UDim2.new(0.2, 0, 1, 0)
 TabFarm.Position = UDim2.new(0, 0, 0, 0)
-TabFarm.Text = "Фарм"
+TabFarm.Text = "Farm"
 TabFarm.Font = Enum.Font.SourceSansBold
 TabFarm.TextSize = 16
 TabFarm.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -168,97 +171,122 @@ TabFarm.ZIndex = 105
 
 local TabFruit = Instance.new("TextButton")
 TabFruit.Parent = TabBar
-TabFruit.Size = UDim2.new(0.25, 0, 1, 0)
-TabFruit.Position = UDim2.new(0.25, 0, 0, 0)
-TabFruit.Text = "Фрукты"
+TabFruit.Size = UDim2.new(0.2, 0, 1, 0)
+TabFruit.Position = UDim2.new(0.2, 0, 0, 0)
+TabFruit.Text = "Fruit"
 TabFruit.Font = Enum.Font.SourceSansBold
 TabFruit.TextSize = 16
 TabFruit.TextColor3 = Color3.fromRGB(255, 255, 255)
 TabFruit.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
 TabFruit.ZIndex = 105
 
-local TabSettings = Instance.new("TextButton")
-TabSettings.Parent = TabBar
-TabSettings.Size = UDim2.new(0.25, 0, 1, 0)
-TabSettings.Position = UDim2.new(0.5, 0, 0, 0)
-TabSettings.Text = "Настройки"
-TabSettings.Font = Enum.Font.SourceSansBold
-TabSettings.TextSize = 16
-TabSettings.TextColor3 = Color3.fromRGB(255, 255, 255)
-TabSettings.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-TabSettings.ZIndex = 105
-
 local TabIslands = Instance.new("TextButton")
 TabIslands.Parent = TabBar
-TabIslands.Size = UDim2.new(0.25, 0, 1, 0)
-TabIslands.Position = UDim2.new(0.75, 0, 0, 0)
-TabIslands.Text = "Острова"
+TabIslands.Size = UDim2.new(0.2, 0, 1, 0)
+TabIslands.Position = UDim2.new(0.4, 0, 0, 0)
+TabIslands.Text = "Islands"
 TabIslands.Font = Enum.Font.SourceSansBold
 TabIslands.TextSize = 16
 TabIslands.TextColor3 = Color3.fromRGB(255, 255, 255)
 TabIslands.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
 TabIslands.ZIndex = 105
 
-local FarmFrame = Instance.new("Frame")
-FarmFrame.Parent = MainFrame
+local TabPvP = Instance.new("TextButton")
+TabPvP.Parent = TabBar
+TabPvP.Size = UDim2.new(0.2, 0, 1, 0)
+TabPvP.Position = UDim2.new(0.6, 0, 0, 0)
+TabPvP.Text = "PvP/AI"
+TabPvP.Font = Enum.Font.SourceSansBold
+TabPvP.TextSize = 16
+TabPvP.TextColor3 = Color3.fromRGB(255, 255, 255)
+TabPvP.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+TabPvP.ZIndex = 105
+
+local TabSettings = Instance.new("TextButton")
+TabSettings.Parent = TabBar
+TabSettings.Size = UDim2.new(0.2, 0, 1, 0)
+TabSettings.Position = UDim2.new(0.8, 0, 0, 0)
+TabSettings.Text = "Settings"
+TabSettings.Font = Enum.Font.SourceSansBold
+TabSettings.TextSize = 16
+TabSettings.TextColor3 = Color3.fromRGB(255, 255, 255)
+TabSettings.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+TabSettings.ZIndex = 105
+
+-- Разделители
+for i = 1, 4 do
+    local sep = Instance.new("Frame")
+    sep.Parent = TabBar
+    sep.Size = UDim2.new(0, 2, 0.8, 0)
+    sep.Position = UDim2.new(i * 0.2, -1, 0.1, 0)
+    sep.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    sep.BorderSizePixel = 0
+    sep.ZIndex = 106
+end
+
+-- Контейнер для контента
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Parent = MainFrame
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Size = UDim2.new(1, 0, 0.78, 0)
+ContentFrame.Position = UDim2.new(0, 0, 0.22, 0)
+ContentFrame.ZIndex = 102
+
+-- Контейнеры для вкладок
+local FarmFrame = Instance.new("ScrollingFrame")
+FarmFrame.Name = "FarmFrame"
+FarmFrame.Parent = ContentFrame
+FarmFrame.Size = UDim2.new(1, 0, 1, 0)
 FarmFrame.BackgroundTransparency = 1
-FarmFrame.Size = UDim2.new(1, 0, 0.78, 0)
-FarmFrame.Position = UDim2.new(0, 0, 0.22, 0)
 FarmFrame.Visible = true
-FarmFrame.ZIndex = 103
+FarmFrame.ScrollBarThickness = 4
 
-local FruitFrame = Instance.new("Frame")
-FruitFrame.Parent = MainFrame
+local FruitFrame = Instance.new("ScrollingFrame")
+FruitFrame.Name = "FruitFrame"
+FruitFrame.Parent = ContentFrame
+FruitFrame.Size = UDim2.new(1, 0, 1, 0)
 FruitFrame.BackgroundTransparency = 1
-FruitFrame.Size = UDim2.new(1, 0, 0.78, 0)
-FruitFrame.Position = UDim2.new(0, 0, 0.22, 0)
 FruitFrame.Visible = false
-FruitFrame.ZIndex = 103
+FruitFrame.ScrollBarThickness = 4
 
-local SettingsFrame = Instance.new("Frame")
-SettingsFrame.Parent = MainFrame
-SettingsFrame.BackgroundTransparency = 1
-SettingsFrame.Size = UDim2.new(1, 0, 0.78, 0)
-SettingsFrame.Position = UDim2.new(0, 0, 0.22, 0)
-SettingsFrame.Visible = false
-SettingsFrame.ZIndex = 103
-
-local IslandsFrame = Instance.new("Frame")
-IslandsFrame.Parent = MainFrame
+local IslandsFrame = Instance.new("ScrollingFrame")
+IslandsFrame.Name = "IslandsFrame"
+IslandsFrame.Parent = ContentFrame
+IslandsFrame.Size = UDim2.new(1, 0, 1, 0)
 IslandsFrame.BackgroundTransparency = 1
-IslandsFrame.Size = UDim2.new(1, 0, 0.78, 0)
-IslandsFrame.Position = UDim2.new(0, 0, 0.22, 0)
 IslandsFrame.Visible = false
-IslandsFrame.ZIndex = 103
+IslandsFrame.ScrollBarThickness = 4
+
+local PvPFrame = Instance.new("ScrollingFrame")
+PvPFrame.Name = "PvPFrame"
+PvPFrame.Parent = ContentFrame
+PvPFrame.Size = UDim2.new(1, 0, 1, 0)
+PvPFrame.BackgroundTransparency = 1
+PvPFrame.Visible = false
+PvPFrame.ScrollBarThickness = 4
+
+local SettingsFrame = Instance.new("ScrollingFrame")
+SettingsFrame.Name = "SettingsFrame"
+SettingsFrame.Parent = ContentFrame
+SettingsFrame.Size = UDim2.new(1, 0, 1, 0)
+SettingsFrame.BackgroundTransparency = 1
+SettingsFrame.Visible = false
+SettingsFrame.ScrollBarThickness = 4
 
 local function ShowTab(tab)
-    if tab == "Farm" then
-        FarmFrame.Visible = true
-        FruitFrame.Visible = false
-        SettingsFrame.Visible = false
-        IslandsFrame.Visible = false
-    elseif tab == "Fruit" then
-        FarmFrame.Visible = false
-        FruitFrame.Visible = true
-        SettingsFrame.Visible = false
-        IslandsFrame.Visible = false
-    elseif tab == "Settings" then
-        FarmFrame.Visible = false
-        FruitFrame.Visible = false
-        SettingsFrame.Visible = true
-        IslandsFrame.Visible = false
-    else
-        FarmFrame.Visible = false
-        FruitFrame.Visible = false
-        SettingsFrame.Visible = false
-        IslandsFrame.Visible = true
-    end
+    FarmFrame.Visible = (tab == "Farm")
+    FruitFrame.Visible = (tab == "Fruit")
+    IslandsFrame.Visible = (tab == "Islands")
+    PvPFrame.Visible = (tab == "PvP")
+    SettingsFrame.Visible = (tab == "Settings")
 end
 
 TabFarm.Activated:Connect(function() ShowTab("Farm") end)
 TabFruit.Activated:Connect(function() ShowTab("Fruit") end)
-TabSettings.Activated:Connect(function() ShowTab("Settings") end)
 TabIslands.Activated:Connect(function() ShowTab("Islands") end)
+TabPvP.Activated:Connect(function() ShowTab("PvP") end)
+TabSettings.Activated:Connect(function() ShowTab("Settings") end)
 
 MakeDraggableAndClickable(ToggleBtn, function()
     MainFrame.Visible = not MainFrame.Visible
@@ -269,6 +297,7 @@ local ButtonCountFarm = 0
 local ButtonCountFruit = 0
 local ButtonCountSettings = 0
 local ButtonCountIslands = 0
+local ButtonCountPvP = 0
 
 -- Функция создания кнопок (Toggle)
 local function CreateSwitch(parent, index, text, defaultVal, callback)
@@ -323,6 +352,10 @@ CreateSwitch(FruitFrame, ButtonCountFruit, "Auto Collect Fruit", _G.AutoCollectF
 CreateSwitch(FruitFrame, ButtonCountFruit, "Server Fruit Hop", _G.ServerFruitHop, function(val) _G.ServerFruitHop = val end); ButtonCountFruit = ButtonCountFruit + 1
 CreateSwitch(FruitFrame, ButtonCountFruit, "Chest ESP", _G.ChestESP, function(val) _G.ChestESP = val end); ButtonCountFruit = ButtonCountFruit + 1
 CreateSwitch(FruitFrame, ButtonCountFruit, "Auto Buy Random Fruit", _G.AutoBuyRandomFruit, function(val) _G.AutoBuyRandomFruit = val end); ButtonCountFruit = ButtonCountFruit + 1
+
+CreateSwitch(PvPFrame, ButtonCountPvP, "Smart AI (Auto Skills)", _G.SmartAI, function(val) _G.SmartAI = val end); ButtonCountPvP = ButtonCountPvP + 1
+CreateSwitch(PvPFrame, ButtonCountPvP, "Auto PvP (Hunt Players)", _G.AutoPvP, function(val) _G.AutoPvP = val end); ButtonCountPvP = ButtonCountPvP + 1
+CreateSwitch(PvPFrame, ButtonCountPvP, "Aim Bot (Camera Lock)", _G.AimBot, function(val) _G.AimBot = val end); ButtonCountPvP = ButtonCountPvP + 1
 
 CreateSwitch(SettingsFrame, ButtonCountSettings, "Auto Stats", _G.AutoStats, function(val) _G.AutoStats = val end); ButtonCountSettings = ButtonCountSettings + 1
 
@@ -981,7 +1014,81 @@ print("✅ Blox Fruits Script v3 загружен!")
 print("📱 Нажми кнопку MENU для открытия")
 print("🍎 Реальное отслеживание спавна фруктов активировано!")
 
--- // НОВЫЙ ФУНКЦИОНАЛ //
+-- // SMART AI & PVP //
+
+-- Функция использования скиллов
+local function UseSkill(key)
+    VirtualInputManager:SendKeyEvent(true, key, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, key, false, game)
+end
+
+-- Основной цикл ИИ
+task.spawn(function()
+    while task.wait(0.1) do
+        if _G.SmartAI then
+            pcall(function()
+                local target = CurrentTarget
+                
+                -- Если нет цели от фермы, но включен ПвП, ищем игрока
+                if not target and _G.AutoPvP then
+                    local minDist = math.huge
+                    local closest = nil
+                    for _, p in pairs(Players:GetPlayers()) do
+                        if p ~= Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+                            local dist = (Player.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                            if dist < minDist then
+                                minDist = dist
+                                closest = p.Character
+                            end
+                        end
+                    end
+                    target = closest
+                    CurrentTarget = target -- Устанавливаем глобальную цель
+                end
+                
+                if target and target:FindFirstChild("HumanoidRootPart") and target:FindFirstChild("Humanoid") and target.Humanoid.Health > 0 then
+                    local dist = (Player.Character.HumanoidRootPart.Position - target.HumanoidRootPart.Position).Magnitude
+                    
+                    -- 1. Движение к цели (ПвП)
+                    if _G.AutoPvP and dist > 10 then
+                        Player.Character.HumanoidRootPart.CFrame = CFrame.new(Player.Character.HumanoidRootPart.Position, target.HumanoidRootPart.Position) * CFrame.new(0, 0, -5) -- Идем вперед
+                        -- Или телепорт если далеко
+                        if dist > 50 then
+                             Player.Character.HumanoidRootPart.CFrame = target.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0)
+                        else
+                            -- "Pro" движение: стрейф
+                            local t = os.clock()
+                            local offsetX = math.sin(t * 3) * 15
+                            local offsetZ = math.cos(t * 3) * 15
+                            local newPos = target.HumanoidRootPart.Position + Vector3.new(offsetX, 10, offsetZ)
+                            Player.Character.HumanoidRootPart.CFrame = CFrame.lookAt(newPos, target.HumanoidRootPart.Position)
+                        end
+                    end
+                    
+                    -- 2. Использование скиллов (Z, X, C, V)
+                    if dist < 100 then -- Дистанция атаки
+                         UseSkill(Enum.KeyCode.Z)
+                         task.wait(0.1)
+                         UseSkill(Enum.KeyCode.X)
+                         task.wait(0.1)
+                         UseSkill(Enum.KeyCode.C)
+                         task.wait(0.1)
+                         UseSkill(Enum.KeyCode.V)
+                         -- Клик мышкой между скиллами
+                         VirtualUser:ClickButton1(Vector2.new())
+                    end
+                    
+                    -- 3. Aimbot
+                    if _G.AimBot then
+                        local camera = Workspace.CurrentCamera
+                        camera.CFrame = CFrame.new(camera.CFrame.Position, target.HumanoidRootPart.Position)
+                    end
+                end
+            end)
+        end
+    end
+end)
 
 -- Auto Aura (Haki)
 task.spawn(function()
