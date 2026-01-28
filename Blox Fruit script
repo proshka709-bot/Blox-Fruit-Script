@@ -311,6 +311,14 @@ end)
 CreateToggle("Auto Shoot (Sheriff)", 310, function(val)
     _G.AutoShoot = val
 end)
+-- Адаптация для мобильных устройств
+if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+    MainFrame.Size = UDim2.new(0.5, 0, 0.6, 0) -- Меньше на телефоне
+    MainFrame.Position = UDim2.new(0.25, 0, 0.2, 0)
+    Title.TextSize = 14
+end
+
+-- Исправленный Auto Shoot
 task.spawn(function()
     while task.wait() do
         if _G.AutoShoot and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
@@ -318,9 +326,11 @@ task.spawn(function()
             if role == "Sheriff" then
                 local gun = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Gun")
                 if gun then
-                    if gun.Parent == LocalPlayer.Backpack and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                    -- Авто-экипировка
+                    if gun.Parent == LocalPlayer.Backpack then
                         LocalPlayer.Character.Humanoid:EquipTool(gun)
                     end
+                    
                     local target
                     for _, p in pairs(Players:GetPlayers()) do
                         if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChild("HumanoidRootPart") then
@@ -331,7 +341,8 @@ task.spawn(function()
                             end
                         end
                     end
-                    if target and target.Character and target.Character:FindFirstChild("Head") and LocalPlayer.Character:FindFirstChild("Head") then
+                    
+                    if target and target.Character and target.Character:FindFirstChild("Head") then
                         local origin = LocalPlayer.Character.Head.Position
                         local goal = target.Character.Head.Position
                         local params = RaycastParams.new()
@@ -339,8 +350,17 @@ task.spawn(function()
                         params.FilterDescendantsInstances = {LocalPlayer.Character}
                         local result = Workspace:Raycast(origin, (goal - origin), params)
                         local dist = (origin - goal).Magnitude
+                        
+                        -- Проверка видимости и дистанции
                         if dist <= 200 and (not result or (result.Instance and result.Instance:IsDescendantOf(target.Character))) then
-                            gun:Activate()
+                            -- Стрельба через VirtualUser для мобильных
+                            if UserInputService.TouchEnabled then
+                                VirtualUser:Button1Down(Vector2.new(0,0))
+                                task.wait(0.1)
+                                VirtualUser:Button1Up(Vector2.new(0,0))
+                            else
+                                gun:Activate()
+                            end
                             task.wait(0.25)
                         end
                     end
