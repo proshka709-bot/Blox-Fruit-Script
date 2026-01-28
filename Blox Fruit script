@@ -252,50 +252,76 @@ CreateToggle("Ghost Mode (Invis)", 220, function(val)
     end
 end)
 
-CreateToggle("Auto Aim", 270, function(val)
+-- 5. Silent Aim (Hitbox Expander)
+-- "Сделай так, чтобы пуля наводилась, а не камера"
+-- Самый надежный способ без сложного namecall hook - увеличить хитбоксы врагов.
+CreateToggle("Silent Aim (Big Hitbox)", 270, function(val)
     _G.AutoAim = val
-end)
-
-task.spawn(function()
-    while task.wait() do
-        if _G.AutoAim and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            local camera = Workspace.CurrentCamera
-            local target
-            local targetColor
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Head") then
-                    local role, color = GetRole(p)
-                    if role == "Murderer" then
-                        target = p
-                        targetColor = color
-                        break
-                    end
-                end
-            end
-            if not target then
-                local nearest
-                local dist = math.huge
-                for _, p in pairs(Players:GetPlayers()) do
-                    if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Head") then
-                        local d = (LocalPlayer.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                        if d < dist then
-                            dist = d
-                            nearest = p
-                        end
-                    end
-                end
-                target = nearest
-            end
-            if target and target.Character and target.Character:FindFirstChild("Head") then
-                local head = target.Character.Head
-                camera.CFrame = CFrame.new(camera.CFrame.Position, head.Position)
+    if not val then
+        -- Вернуть размер голов
+        for _, p in pairs(Players:GetPlayers()) do
+            if p.Character and p.Character:FindFirstChild("Head") then
+                p.Character.Head.Size = Vector3.new(2, 1, 1) -- Стандартный размер
+                p.Character.Head.Transparency = 0
+                p.Character.Head.CanCollide = true
             end
         end
     end
 end)
--- Кнопка закрытия
+
+task.spawn(function()
+    while task.wait(1) do
+        if _G.AutoAim then
+            local myRole = GetRole(LocalPlayer)
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChild("HumanoidRootPart") then
+                    local targetRole = GetRole(p)
+                    local shouldTarget = false
+                    
+                    -- Логика выбора цели
+                    if myRole == "Murderer" then
+                        -- Убийца целится в Шерифа или Невиновных
+                        if targetRole == "Sheriff" or targetRole == "Innocent" then shouldTarget = true end
+                    elseif myRole == "Sheriff" or myRole == "Innocent" then
+                        -- Шериф/Герой целится в Убийцу
+                        if targetRole == "Murderer" then shouldTarget = true end
+                    end
+                    
+                    if shouldTarget then
+                        p.Character.Head.Size = Vector3.new(15, 15, 15)
+                        p.Character.Head.Transparency = 0.5
+                        p.Character.Head.CanCollide = false -- Чтобы не застревать
+                    else
+                        -- Не цель - возвращаем размер
+                        p.Character.Head.Size = Vector3.new(2, 1, 1)
+                        p.Character.Head.Transparency = 0
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Кнопка закрытия и открытия
+local OpenBtn = Instance.new("TextButton")
+OpenBtn.Name = "OpenBtn"
+OpenBtn.Text = "OPEN GUI"
+OpenBtn.Size = UDim2.new(0, 100, 0, 40)
+OpenBtn.Position = UDim2.new(0, 10, 0.5, 0)
+OpenBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+OpenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+OpenBtn.Font = Enum.Font.SourceSansBold
+OpenBtn.TextSize = 18
+OpenBtn.Visible = false
+OpenBtn.Parent = ScreenGui
+
+OpenBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = true
+    OpenBtn.Visible = false
+end)
+
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Text = "CLOSE"
+CloseBtn.Text = "HIDE"
 CloseBtn.Size = UDim2.new(0.9, 0, 0, 40)
 CloseBtn.Position = UDim2.new(0.05, 0, 0, 340)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
@@ -305,7 +331,8 @@ CloseBtn.TextSize = 18
 CloseBtn.Parent = MainFrame
 
 CloseBtn.MouseButton1Click:Connect(function()
-    ScreenGui:Destroy()
+    MainFrame.Visible = false
+    OpenBtn.Visible = true
 end)
 
 print("MM2 Script Loaded!")
