@@ -86,7 +86,7 @@ UICornerFrame.Parent = MainFrame
 -- Заголовок
 local Title = Instance.new("TextLabel")
 Title.Parent = MainFrame
-Title.Text = "BLOX FRUITS SCRIPT v3"
+Title.Text = "BLOX FRUITS SCRIPT v3.1 (Острова)"
 Title.Size = UDim2.new(1, 0, 0.12, 0)
 Title.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
