@@ -360,6 +360,8 @@ local function GetIslandCFrame(def)
     return nil
 end
 
+local TweenService = game:GetService("TweenService")
+
 local function TeleportToIsland(def)
     local lvl = 0
     if Player.Data and Player.Data:FindFirstChild("Level") then
@@ -371,7 +373,38 @@ local function TeleportToIsland(def)
     if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
         local cf = GetIslandCFrame(def)
         if cf then
-            Player.Character.HumanoidRootPart.CFrame = cf
+            -- Отключаем автофарм, чтобы не тянуло обратно
+            if _G.AutoFarm then
+                _G.AutoFarm = false
+                -- Обновляем кнопку в GUI, если она есть
+                -- Но у нас нет прямого доступа к кнопке, поэтому просто меняем переменную
+            end
+            if _G.AutoQuest then _G.AutoQuest = false end
+            
+            -- Используем Tween для плавного телепорта (обход античита)
+            local dist = (Player.Character.HumanoidRootPart.Position - cf.Position).Magnitude
+            if dist > 300 then
+                local tweenInfo = TweenInfo.new(dist / 300, Enum.EasingStyle.Linear) -- Скорость ~300 стадов/сек
+                local tween = TweenService:Create(Player.Character.HumanoidRootPart, tweenInfo, {CFrame = cf})
+                tween:Play()
+                
+                -- Noclip во время полета
+                local noclipConn
+                noclipConn = RunService.Stepped:Connect(function()
+                    if Player.Character then
+                        for _, v in pairs(Player.Character:GetDescendants()) do
+                            if v:IsA("BasePart") then v.CanCollide = false end
+                        end
+                    end
+                end)
+                
+                tween.Completed:Connect(function()
+                    if noclipConn then noclipConn:Disconnect() end
+                    Player.Character.HumanoidRootPart.CFrame = cf -- Финальная точка
+                end)
+            else
+                Player.Character.HumanoidRootPart.CFrame = cf
+            end
         end
     end
 end
