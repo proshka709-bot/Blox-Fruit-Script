@@ -1,1277 +1,311 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local VirtualUser = game:GetService("VirtualUser")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local TeleportService = game:GetService("TeleportService")
-local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+local PathfindingService = game:GetService("PathfindingService")
 
-local Player = Players.LocalPlayer
-local _G = _G or {} 
+local _G = _G or {}
+_G.ESP = false
+_G.CoinFarm = false
+_G.Speed = false
+_G.XRay = false
+_G.AutoAim = false
 
--- // НАСТРОЙКИ //
-_G.AutoFarm = false
-_G.AutoQuest = false
-_G.FruitESP = false
-_G.AutoCollectFruit = false
-_G.ServerFruitHop = false -- Сервер Хоп для фруктов
-_G.ReachAura = true -- Включено по умолчанию для удобства
-_G.AutoStats = false -- Авто-статы
-_G.AttackDist = 3
-_G.MobileAttackOnly = true
-_G.AutoHaki = true -- Авто Хаки
-_G.ChestESP = false -- ЕСП Сундуков
-_G.SpeedBoost = false -- Скорость
-_G.WalkOnWater = false -- Ходьба по воде
-_G.InfGeppo = false -- Бесконечные прыжки
-_G.SelectStat = "Melee" -- Выбранный стат
-_G.AutoBuyRandomFruit = false -- Авто-покупка фруктов
-_G.SmartAI = false -- Умный ИИ (Авто-скиллы)
-_G.AutoPvP = false -- Авто-ПвП (охота на игроков)
-_G.AimBot = false -- Аимбот (камера)
-_G.PlayerESP = false -- ЕСП Игроков (Валлхак)
-_G.AutoFarmChests = false -- Авто-фарм сундуков
-local CurrentTarget = nil
-
--- Система отслеживания фруктов
-local FruitSpawnData = {
-    LastSeenFruits = {},
-    SpawnTimes = {},
-    AverageSpawnTime = 3600,
-    LastDespawnTime = 0
-}
-
--- // GUI ИНТЕРФЕЙС //
-task.wait(1) -- Ждем инициализации
-if not game:IsLoaded() then game.Loaded:Wait() end
-
--- Удаляем старое GUI если есть
-local oldGui = Player:WaitForChild("PlayerGui"):FindFirstChild("BloxFruitMobileGUI_v3")
-if oldGui then oldGui:Destroy() end
-
+-- // GUI SETUP //
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "BloxFruitMobileGUI_v3"
-ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+ScreenGui.Name = "MM2_GUI_v1"
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 ScreenGui.ResetOnSpawn = false
-ScreenGui.DisplayOrder = 1000
-ScreenGui.IgnoreGuiInset = true -- Важно для мобилок!
 
--- Кнопка МЕНЮ
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Name = "ToggleBtn"
-ToggleBtn.Parent = ScreenGui
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
--- Позиция чуть ниже (чтобы не перекрывалась чатом)
-ToggleBtn.Position = UDim2.new(0, 50, 0.3, 0) 
-ToggleBtn.Size = UDim2.new(0, 60, 0, 60)
-ToggleBtn.Font = Enum.Font.SourceSansBold
-ToggleBtn.Text = "MENU"
-ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleBtn.TextSize = 16
-ToggleBtn.ZIndex = 100
-ToggleBtn.BorderSizePixel = 2
-ToggleBtn.BorderColor3 = Color3.fromRGB(255, 255, 255)
-ToggleBtn.Active = true
-ToggleBtn.Draggable = false -- Отключаем стандартный драг, используем кастомный
-
-local UICornerBtn = Instance.new("UICorner")
-UICornerBtn.CornerRadius = UDim.new(0.5, 0)
-UICornerBtn.Parent = ToggleBtn
-
--- Основное окно
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Parent = ScreenGui
-MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-MainFrame.Size = UDim2.new(0.5, 0, 0.65, 0)
-MainFrame.Visible = false
-MainFrame.ZIndex = 101
+MainFrame.Size = UDim2.new(0, 320, 0, 400)
+MainFrame.Position = UDim2.new(0.5, -160, 0.5, -200)
+MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
 
-local UICornerFrame = Instance.new("UICorner")
-UICornerFrame.CornerRadius = UDim.new(0.05, 0)
-UICornerFrame.Parent = MainFrame
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 10)
+UICorner.Parent = MainFrame
 
 -- Заголовок
 local Title = Instance.new("TextLabel")
-Title.Parent = MainFrame
-Title.Text = "BLOX FRUITS SCRIPT v3.5 (ESP + Chests)"
-Title.Size = UDim2.new(1, 0, 0.12, 0)
-Title.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
+Title.Text = "MM2 SCRIPT v1.0 (ESP + FARM)"
+Title.Size = UDim2.new(1, 0, 0, 50)
+Title.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 18
-Title.ZIndex = 102
+Title.TextSize = 22
+Title.Parent = MainFrame
 
-local UICornerTitle = Instance.new("UICorner")
-UICornerTitle.CornerRadius = UDim.new(0.1, 0)
-UICornerTitle.Parent = Title
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 10)
+TitleCorner.Parent = Title
 
--- Кастомная логика перетаскивания и клика (Mobile Friendly)
-local function MakeDraggableAndClickable(obj, onClick)
-    local UserInputService = game:GetService("UserInputService")
-    local dragging = false
-    local dragInput, dragStart, startPos
-    local isMoved = false
-
-    local function update(input)
-        local delta = input.Position - dragStart
-        obj.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        if delta.Magnitude > 10 then isMoved = true end -- Порог движения
-    end
-
-    obj.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = obj.Position
-            isMoved = false
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                    if not isMoved and onClick then onClick() end
-                end
-            end)
-        end
-    end)
-
-    obj.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            update(input)
-        end
-    end)
-end
-
--- Подключаем логику к кнопке
-local TabBar = Instance.new("Frame")
-TabBar.Parent = MainFrame
-TabBar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-TabBar.Size = UDim2.new(1, 0, 0.1, 0)
-TabBar.Position = UDim2.new(0, 0, 0.12, 0)
-TabBar.ZIndex = 104
-
-local TabFarm = Instance.new("TextButton")
-TabFarm.Parent = TabBar
-TabFarm.Size = UDim2.new(0.2, 0, 1, 0)
-TabFarm.Position = UDim2.new(0, 0, 0, 0)
-TabFarm.Text = "Farm"
-TabFarm.Font = Enum.Font.SourceSansBold
-TabFarm.TextSize = 16
-TabFarm.TextColor3 = Color3.fromRGB(255, 255, 255)
-TabFarm.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-TabFarm.ZIndex = 105
-
-local TabFruit = Instance.new("TextButton")
-TabFruit.Parent = TabBar
-TabFruit.Size = UDim2.new(0.2, 0, 1, 0)
-TabFruit.Position = UDim2.new(0.2, 0, 0, 0)
-TabFruit.Text = "Fruit"
-TabFruit.Font = Enum.Font.SourceSansBold
-TabFruit.TextSize = 16
-TabFruit.TextColor3 = Color3.fromRGB(255, 255, 255)
-TabFruit.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-TabFruit.ZIndex = 105
-
-local TabIslands = Instance.new("TextButton")
-TabIslands.Parent = TabBar
-TabIslands.Size = UDim2.new(0.2, 0, 1, 0)
-TabIslands.Position = UDim2.new(0.4, 0, 0, 0)
-TabIslands.Text = "Islands"
-TabIslands.Font = Enum.Font.SourceSansBold
-TabIslands.TextSize = 16
-TabIslands.TextColor3 = Color3.fromRGB(255, 255, 255)
-TabIslands.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-TabIslands.ZIndex = 105
-
-local TabPvP = Instance.new("TextButton")
-TabPvP.Parent = TabBar
-TabPvP.Size = UDim2.new(0.2, 0, 1, 0)
-TabPvP.Position = UDim2.new(0.6, 0, 0, 0)
-TabPvP.Text = "PvP/AI"
-TabPvP.Font = Enum.Font.SourceSansBold
-TabPvP.TextSize = 16
-TabPvP.TextColor3 = Color3.fromRGB(255, 255, 255)
-TabPvP.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-TabPvP.ZIndex = 105
-
-local TabSettings = Instance.new("TextButton")
-TabSettings.Parent = TabBar
-TabSettings.Size = UDim2.new(0.2, 0, 1, 0)
-TabSettings.Position = UDim2.new(0.8, 0, 0, 0)
-TabSettings.Text = "Settings"
-TabSettings.Font = Enum.Font.SourceSansBold
-TabSettings.TextSize = 16
-TabSettings.TextColor3 = Color3.fromRGB(255, 255, 255)
-TabSettings.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-TabSettings.ZIndex = 105
-
--- Разделители
-for i = 1, 4 do
-    local sep = Instance.new("Frame")
-    sep.Parent = TabBar
-    sep.Size = UDim2.new(0, 2, 0.8, 0)
-    sep.Position = UDim2.new(i * 0.2, -1, 0.1, 0)
-    sep.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    sep.BorderSizePixel = 0
-    sep.ZIndex = 106
-end
-
--- Контейнер для контента
-local ContentFrame = Instance.new("Frame")
-ContentFrame.Name = "ContentFrame"
-ContentFrame.Parent = MainFrame
-ContentFrame.BackgroundTransparency = 1
-ContentFrame.Size = UDim2.new(1, 0, 0.78, 0)
-ContentFrame.Position = UDim2.new(0, 0, 0.22, 0)
-ContentFrame.ZIndex = 102
-
--- Контейнеры для вкладок
-local FarmFrame = Instance.new("ScrollingFrame")
-FarmFrame.Name = "FarmFrame"
-FarmFrame.Parent = ContentFrame
-FarmFrame.Size = UDim2.new(1, 0, 1, 0)
-FarmFrame.BackgroundTransparency = 1
-FarmFrame.Visible = true
-FarmFrame.ScrollBarThickness = 4
-
-local FruitFrame = Instance.new("ScrollingFrame")
-FruitFrame.Name = "FruitFrame"
-FruitFrame.Parent = ContentFrame
-FruitFrame.Size = UDim2.new(1, 0, 1, 0)
-FruitFrame.BackgroundTransparency = 1
-FruitFrame.Visible = false
-FruitFrame.ScrollBarThickness = 4
-
-local IslandsFrame = Instance.new("ScrollingFrame")
-IslandsFrame.Name = "IslandsFrame"
-IslandsFrame.Parent = ContentFrame
-IslandsFrame.Size = UDim2.new(1, 0, 1, 0)
-IslandsFrame.BackgroundTransparency = 1
-IslandsFrame.Visible = false
-IslandsFrame.ScrollBarThickness = 4
-
-local PvPFrame = Instance.new("ScrollingFrame")
-PvPFrame.Name = "PvPFrame"
-PvPFrame.Parent = ContentFrame
-PvPFrame.Size = UDim2.new(1, 0, 1, 0)
-PvPFrame.BackgroundTransparency = 1
-PvPFrame.Visible = false
-PvPFrame.ScrollBarThickness = 4
-
-local SettingsFrame = Instance.new("ScrollingFrame")
-SettingsFrame.Name = "SettingsFrame"
-SettingsFrame.Parent = ContentFrame
-SettingsFrame.Size = UDim2.new(1, 0, 1, 0)
-SettingsFrame.BackgroundTransparency = 1
-SettingsFrame.Visible = false
-SettingsFrame.ScrollBarThickness = 4
-
-local function ShowTab(tab)
-    FarmFrame.Visible = (tab == "Farm")
-    FruitFrame.Visible = (tab == "Fruit")
-    IslandsFrame.Visible = (tab == "Islands")
-    PvPFrame.Visible = (tab == "PvP")
-    SettingsFrame.Visible = (tab == "Settings")
-end
-
-TabFarm.Activated:Connect(function() ShowTab("Farm") end)
-TabFruit.Activated:Connect(function() ShowTab("Fruit") end)
-TabIslands.Activated:Connect(function() ShowTab("Islands") end)
-TabPvP.Activated:Connect(function() ShowTab("PvP") end)
-TabSettings.Activated:Connect(function() ShowTab("Settings") end)
-
-MakeDraggableAndClickable(ToggleBtn, function()
-    MainFrame.Visible = not MainFrame.Visible
-end)
-
--- Счетчик кнопок для правильного позиционирования
-local ButtonCountFarm = 0
-local ButtonCountFruit = 0
-local ButtonCountSettings = 0
-local ButtonCountIslands = 0
-local ButtonCountPvP = 0
-
--- Функция создания кнопок (Toggle)
-local function CreateSwitch(parent, index, text, defaultVal, callback)
+-- Функция создания кнопок
+local function CreateToggle(text, yPos, callback)
     local btn = Instance.new("TextButton")
-    btn.Parent = parent
-    btn.BackgroundColor3 = defaultVal and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
-    btn.Size = UDim2.new(0.9, 0, 0.10, 0) -- Компактный размер
-    btn.Position = UDim2.new(0.05, 0, 0.05 + index * 0.11, 0)
-    btn.Text = text .. ": " .. (defaultVal and "ON" or "OFF")
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 14
-    btn.ZIndex = 103
-    
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0.2, 0)
-    corner.Parent = btn
-    
-    btn.Activated:Connect(function()
-        local isOn = not (btn.Text:find("ON") ~= nil)
-        btn.Text = text .. ": " .. (isOn and "ON" or "OFF")
-        btn.BackgroundColor3 = isOn and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
-        callback(isOn)
-    end)
-end
-
-local function CreateButton(parent, index, text, callback)
-    local btn = Instance.new("TextButton")
-    btn.Parent = parent
-    btn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-    btn.Size = UDim2.new(0.9, 0, 0.10, 0)
-    btn.Position = UDim2.new(0.05, 0, 0.05 + index * 0.11, 0)
     btn.Text = text
+    btn.Size = UDim2.new(0.9, 0, 0, 40)
+    btn.Position = UDim2.new(0.05, 0, 0, yPos)
+    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 14
-    btn.ZIndex = 103
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0.2, 0)
-    corner.Parent = btn
-    btn.Activated:Connect(function()
-        callback()
+    btn.TextSize = 18
+    btn.Parent = MainFrame
+    
+    local btnCorner = Instance.new("UICorner")
+    btnCorner.CornerRadius = UDim.new(0, 8)
+    btnCorner.Parent = btn
+    
+    local on = false
+    btn.MouseButton1Click:Connect(function()
+        on = not on
+        if on then
+            btn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
+            btn.Text = text .. " [ON]"
+        else
+            btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+            btn.Text = text
+        end
+        callback(on)
     end)
-    return btn
 end
 
-CreateSwitch(FarmFrame, ButtonCountFarm, "Auto Farm", _G.AutoFarm, function(val) _G.AutoFarm = val end); ButtonCountFarm = ButtonCountFarm + 1
-CreateSwitch(FarmFrame, ButtonCountFarm, "Auto Quest", _G.AutoQuest, function(val) _G.AutoQuest = val end); ButtonCountFarm = ButtonCountFarm + 1
-CreateSwitch(FarmFrame, ButtonCountFarm, "Hitbox Reach", _G.ReachAura, function(val) _G.ReachAura = val end); ButtonCountFarm = ButtonCountFarm + 1
-CreateSwitch(FruitFrame, ButtonCountFruit, "Fruit ESP", _G.FruitESP, function(val) _G.FruitESP = val end); ButtonCountFruit = ButtonCountFruit + 1
-CreateSwitch(FruitFrame, ButtonCountFruit, "Auto Collect Fruit", _G.AutoCollectFruit, function(val) _G.AutoCollectFruit = val end); ButtonCountFruit = ButtonCountFruit + 1
-CreateSwitch(FruitFrame, ButtonCountFruit, "Server Fruit Hop", _G.ServerFruitHop, function(val) _G.ServerFruitHop = val end); ButtonCountFruit = ButtonCountFruit + 1
-CreateSwitch(FruitFrame, ButtonCountFruit, "Chest ESP", _G.ChestESP, function(val) _G.ChestESP = val end); ButtonCountFruit = ButtonCountFruit + 1
-CreateSwitch(FruitFrame, ButtonCountFruit, "Auto Farm Chests", _G.AutoFarmChests, function(val) _G.AutoFarmChests = val end); ButtonCountFruit = ButtonCountFruit + 1
-CreateSwitch(FruitFrame, ButtonCountFruit, "Auto Buy Random Fruit", _G.AutoBuyRandomFruit, function(val) _G.AutoBuyRandomFruit = val end); ButtonCountFruit = ButtonCountFruit + 1
+-- // ФУНКЦИИ //
 
-CreateSwitch(PvPFrame, ButtonCountPvP, "Smart AI (Auto Skills)", _G.SmartAI, function(val) _G.SmartAI = val end); ButtonCountPvP = ButtonCountPvP + 1
-CreateSwitch(PvPFrame, ButtonCountPvP, "Auto PvP (Hunt Players)", _G.AutoPvP, function(val) _G.AutoPvP = val end); ButtonCountPvP = ButtonCountPvP + 1
-CreateSwitch(PvPFrame, ButtonCountPvP, "Aim Bot (Camera Lock)", _G.AimBot, function(val) _G.AimBot = val end); ButtonCountPvP = ButtonCountPvP + 1
-CreateSwitch(PvPFrame, ButtonCountPvP, "Player ESP (Wallhack)", _G.PlayerESP, function(val) _G.PlayerESP = val end); ButtonCountPvP = ButtonCountPvP + 1
-
-CreateSwitch(SettingsFrame, ButtonCountSettings, "Auto Stats", _G.AutoStats, function(val) _G.AutoStats = val end); ButtonCountSettings = ButtonCountSettings + 1
-
-local StatsList = {"Melee", "Defense", "Sword", "Gun", "Demon Fruit"}
-local StatIdx = 1
-local statBtn
-statBtn = CreateButton(SettingsFrame, ButtonCountSettings, "Select Stat: Melee", function()
-    StatIdx = StatIdx + 1
-    if StatIdx > #StatsList then StatIdx = 1 end
-    _G.SelectStat = StatsList[StatIdx]
-    if statBtn then statBtn.Text = "Select Stat: " .. StatsList[StatIdx] end
-end); ButtonCountSettings = ButtonCountSettings + 1
-
-CreateSwitch(SettingsFrame, ButtonCountSettings, "Mobile Attack Only", _G.MobileAttackOnly, function(val) _G.MobileAttackOnly = val end); ButtonCountSettings = ButtonCountSettings + 1
-CreateSwitch(SettingsFrame, ButtonCountSettings, "Auto Aura (Buso)", _G.AutoHaki, function(val) _G.AutoHaki = val end); ButtonCountSettings = ButtonCountSettings + 1
-CreateSwitch(SettingsFrame, ButtonCountSettings, "Speed Boost (60)", _G.SpeedBoost, function(val) _G.SpeedBoost = val end); ButtonCountSettings = ButtonCountSettings + 1
-CreateSwitch(SettingsFrame, ButtonCountSettings, "Walk On Water", _G.WalkOnWater, function(val) _G.WalkOnWater = val end); ButtonCountSettings = ButtonCountSettings + 1
-CreateSwitch(SettingsFrame, ButtonCountSettings, "Infinite Geppo", _G.InfGeppo, function(val) _G.InfGeppo = val end); ButtonCountSettings = ButtonCountSettings + 1
-
-local IslandDefs = {
-    {label="Стартовый остров", req=0, patterns={"starter","start","pirate"}},
-    {label="Джунгли (15+)", req=15, patterns={"jungle"}},
-    {label="Деревня Пиратов (30+)", req=30, patterns={"pirate village","pirate"}},
-    {label="Пустыня (60+)", req=60, patterns={"desert"}},
-    {label="Средний Остров", req=0, patterns={"middle","middle town"}},
-    {label="Снежный Остров (90+)", req=90, patterns={"frozen","snow","frozen village"}},
-    {label="Морская Крепость (120+)", req=120, patterns={"marine fortress","marineford","marine"}},
-    {label="Скайпия (150+)", req=150, patterns={"sky","skypia","skylands"}},
-    {label="Тюрьма (190+)", req=190, patterns={"prison"}},
-    {label="Колизей (225+)", req=225, patterns={"colosseum"}},
-    {label="Магмовая Деревня (300+)", req=300, patterns={"magma village","magma"}},
-    {label="Подводный Город (375+)", req=375, patterns={"underwater city","underwater","fishman"}},
-    {label="Фонтанный Город (625+)", req=625, patterns={"fountain city","fountain"}}
-}
-
-local function GetIslandCFrame(def)
-    for _, pat in ipairs(def.patterns) do
-        local needle = string.lower(pat)
-        for _, d in ipairs(Workspace:GetDescendants()) do
-            local name = string.lower(d.Name)
-            if string.find(name, needle) then
-                if d:IsA("Model") then
-                    local part = d.PrimaryPart
-                    if not part then
-                        for _, c in ipairs(d:GetDescendants()) do
-                            if c:IsA("BasePart") then
-                                part = c
-                                break
-                            end
-                        end
-                    end
-                    if part then
-                        return part.CFrame + Vector3.new(0, 7, 0)
-                    end
-                elseif d:IsA("BasePart") then
-                    return d.CFrame + Vector3.new(0, 7, 0)
-                end
-            end
-        end
-    end
-    return nil
-end
-
-local TweenService = game:GetService("TweenService")
-
-local function TeleportToIsland(def)
-    local lvl = 0
-    if Player.Data and Player.Data:FindFirstChild("Level") then
-        lvl = Player.Data.Level.Value
-    end
-    if lvl < def.req then
-        return
-    end
-    if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-        local cf = GetIslandCFrame(def)
-        if cf then
-            -- Отключаем автофарм, чтобы не тянуло обратно
-            if _G.AutoFarm then
-                _G.AutoFarm = false
-                -- Обновляем кнопку в GUI, если она есть
-                -- Но у нас нет прямого доступа к кнопке, поэтому просто меняем переменную
-            end
-            if _G.AutoQuest then _G.AutoQuest = false end
-            
-            -- Используем Tween для плавного телепорта (обход античита)
-            local dist = (Player.Character.HumanoidRootPart.Position - cf.Position).Magnitude
-            if dist > 300 then
-                local tweenInfo = TweenInfo.new(dist / 300, Enum.EasingStyle.Linear) -- Скорость ~300 стадов/сек
-                local tween = TweenService:Create(Player.Character.HumanoidRootPart, tweenInfo, {CFrame = cf})
-                tween:Play()
-                
-                -- Noclip во время полета
-                local noclipConn
-                noclipConn = RunService.Stepped:Connect(function()
-                    if Player.Character then
-                        for _, v in pairs(Player.Character:GetDescendants()) do
-                            if v:IsA("BasePart") then v.CanCollide = false end
-                        end
-                    end
-                end)
-                
-                tween.Completed:Connect(function()
-                    if noclipConn then noclipConn:Disconnect() end
-                    Player.Character.HumanoidRootPart.CFrame = cf -- Финальная точка
-                end)
-            else
-                Player.Character.HumanoidRootPart.CFrame = cf
-            end
-        end
-    end
-end
-
-for _, def in ipairs(IslandDefs) do
-    CreateButton(IslandsFrame, ButtonCountIslands, def.label, function()
-        TeleportToIsland(def)
-    end)
-    ButtonCountIslands = ButtonCountIslands + 1
-end
-
--- Кнопка закрытия (X)
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Parent = MainFrame
-CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-CloseBtn.Size = UDim2.new(0.12, 0, 0.12, 0)
-CloseBtn.Position = UDim2.new(0.88, 0, 0, 0) -- Справа сверху
-CloseBtn.Text = "X"
-CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 18
-CloseBtn.ZIndex = 105
-
-local UICornerClose = Instance.new("UICorner")
-UICornerClose.CornerRadius = UDim.new(0.3, 0)
-UICornerClose.Parent = CloseBtn
-
-CloseBtn.Activated:Connect(function()
-    MainFrame.Visible = false
-end)
-
--- Таймер фруктов
-local FruitTimerLabel = Instance.new("TextLabel")
-FruitTimerLabel.Parent = ScreenGui
-FruitTimerLabel.Position = UDim2.new(0.05, 0, 0.08, 0)
-FruitTimerLabel.Size = UDim2.new(0, 240, 0, 30)
-FruitTimerLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-FruitTimerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-FruitTimerLabel.Font = Enum.Font.SourceSansBold
-FruitTimerLabel.TextSize = 14
-FruitTimerLabel.ZIndex = 110
-FruitTimerLabel.Text = "Фрукты: инициализация..."
-
-local UICornerTimer = Instance.new("UICorner")
-UICornerTimer.CornerRadius = UDim.new(0.2, 0)
-UICornerTimer.Parent = FruitTimerLabel
-
--- // ЛОГИКА СКРИПТА //
-
--- // КОНФИГУРАЦИЯ КВЕСТОВ (FIRST SEA) //
-local QuestList = {
-    {Req=0, Name="BanditQuest1", Id=1, Mob="Bandit"},
-    {Req=10, Name="JungleQuest", Id=1, Mob="Monkey"},
-    {Req=15, Name="JungleQuest", Id=2, Mob="Gorilla"},
-    {Req=20, Name="JungleQuest", Id=3, Mob="Gorilla King"},
-    {Req=30, Name="BuggyQuest1", Id=1, Mob="Pirate"},
-    {Req=40, Name="BuggyQuest1", Id=2, Mob="Brute"},
-    {Req=60, Name="DesertQuest", Id=1, Mob="Desert Bandit"},
-    {Req=75, Name="DesertQuest", Id=2, Mob="Desert Officer"},
-    {Req=90, Name="SnowQuest", Id=1, Mob="Snow Bandit"},
-    {Req=100, Name="SnowQuest", Id=2, Mob="Snowman"},
-    {Req=120, Name="MarineQuest2", Id=1, Mob="Chief Petty Officer"},
-    {Req=150, Name="SkyQuest", Id=1, Mob="Sky Bandit"},
-    {Req=175, Name="SkyQuest", Id=2, Mob="Dark Master"},
-    {Req=190, Name="PrisonerQuest", Id=1, Mob="Prisoner"},
-    {Req=210, Name="PrisonerQuest", Id=2, Mob="Dangerous Prisoner"},
-    {Req=225, Name="ColosseumQuest", Id=1, Mob="Toga Warrior"},
-    {Req=275, Name="ColosseumQuest", Id=2, Mob="Gladiator"},
-    {Req=300, Name="MagmaQuest", Id=1, Mob="Military Soldier"},
-    {Req=325, Name="MagmaQuest", Id=2, Mob="Military Spy"},
-    {Req=375, Name="FishmanQuest", Id=1, Mob="Fishman Warrior"},
-    {Req=400, Name="FishmanQuest", Id=2, Mob="Fishman Commando"},
-    {Req=450, Name="SkyExp1Quest", Id=1, Mob="God's Guard"},
-    {Req=475, Name="SkyExp1Quest", Id=2, Mob="Shanda"},
-    {Req=525, Name="SkyExp2Quest", Id=1, Mob="Royal Squad"},
-    {Req=625, Name="FountainQuest", Id=1, Mob="Galley Pirate"},
-    {Req=650, Name="FountainQuest", Id=2, Mob="Galley Captain"}
-}
-
-local function GetCurrentQuestConfig(level)
-    for i = #QuestList, 1, -1 do
-        if level >= QuestList[i].Req then
-            if QuestList[i].Mob == "Gorilla King" then
-                if not Workspace.Enemies:FindFirstChild("Gorilla King") then
-                    continue
-                end
-            end
-            return QuestList[i]
-        end
-    end
-    return QuestList[1]
-end
-
-local function GetQuestTarget()
-    local gui = Player:FindFirstChild("PlayerGui")
-    if gui and gui:FindFirstChild("Main") and gui.Main:FindFirstChild("Quest") then
-        local q = gui.Main.Quest
-        if q.Visible then
-            local t = q.Container.QuestTitle.Title.Text
-            for _, cfg in pairs(QuestList) do
-                if string.find(t, cfg.Mob) then return cfg.Mob end
-            end
-            if string.find(t, "Bandit") then return "Bandit" end
-            if string.find(t, "Monkey") then return "Monkey" end
-            if string.find(t, "Gorilla") then return "Gorilla" end
-            if string.find(t, "Gorilla King") then return "Gorilla King" end
-            if string.find(t, "Pirate") then return "Pirate" end
-            if string.find(t, "Galley Pirate") then return "Galley Pirate" end
-        end
-    end
-    return nil
-end
-
-local function EquipBest()
-    local char = Player.Character
-    if not char then return end
-    local tool = char:FindFirstChildOfClass("Tool")
-    if tool then return tool end
-    for _, t in pairs(Player.Backpack:GetChildren()) do
-        if t:IsA("Tool") and (t.ToolTip == "Melee" or t.Name == "Combat" or t.ToolTip == "Sword") then
-            char.Humanoid:EquipTool(t)
-            return t
-        end
-    end
-end
-
--- Функция поиска фруктов в Workspace
-local function FindAllFruits()
-    local fruits = {}
-    for _, v in pairs(Workspace:GetChildren()) do
-        if string.find(v.Name, "Fruit") and v:IsA("Tool") and v:FindFirstChild("Handle") then
-            table.insert(fruits, v)
-        end
-    end
-    return fruits
-end
-
--- Система отслеживания спавна фруктов
-local function UpdateFruitTracking()
-    local currentFruits = FindAllFruits()
-    local currentFruitNames = {}
+-- 1. Определение ролей (ESP)
+local function GetRole(plr)
+    local hasKnife = false
+    local hasGun = false
     
-    -- Собираем текущие фрукты
-    for _, fruit in pairs(currentFruits) do
-        currentFruitNames[fruit.Name] = true
+    -- Проверяем Backpack (инвентарь) и Character (в руках)
+    if plr.Backpack:FindFirstChild("Knife") or (plr.Character and plr.Character:FindFirstChild("Knife")) then
+        hasKnife = true
     end
     
-    -- Проверяем новые фрукты (заспавнились)
-    for fruitName, _ in pairs(currentFruitNames) do
-        if not FruitSpawnData.LastSeenFruits[fruitName] then
-            -- Новый фрукт заспавнился!
-            local spawnTime = os.time()
-            
-            -- Если был предыдущий деспавн, рассчитываем интервал
-            if FruitSpawnData.LastDespawnTime > 0 then
-                local interval = spawnTime - FruitSpawnData.LastDespawnTime
-                table.insert(FruitSpawnData.SpawnTimes, interval)
-                
-                -- Рассчитываем средний интервал спавна (последние 5 спавнов)
-                if #FruitSpawnData.SpawnTimes > 5 then
-                    table.remove(FruitSpawnData.SpawnTimes, 1)
-                end
-                
-                local sum = 0
-                for _, time in pairs(FruitSpawnData.SpawnTimes) do
-                    sum = sum + time
-                end
-                FruitSpawnData.AverageSpawnTime = math.floor(sum / #FruitSpawnData.SpawnTimes)
-            end
-            
-            FruitSpawnData.LastSeenFruits[fruitName] = spawnTime
-        end
+    if plr.Backpack:FindFirstChild("Gun") or (plr.Character and plr.Character:FindFirstChild("Gun")) then
+        hasGun = true
     end
     
-    -- Проверяем деспавн фруктов
-    for fruitName, _ in pairs(FruitSpawnData.LastSeenFruits) do
-        if not currentFruitNames[fruitName] then
-            -- Фрукт исчез (деспавн или подобран)
-            FruitSpawnData.LastSeenFruits[fruitName] = nil
-            FruitSpawnData.LastDespawnTime = os.time()
-        end
-    end
-    
-    return currentFruits
+    -- Иногда оружие скрыто или имеет другое имя, но стандартно так:
+    if hasKnife then return "Murderer", Color3.fromRGB(255, 0, 0) end
+    if hasGun then return "Sheriff", Color3.fromRGB(0, 0, 255) end
+    return "Innocent", Color3.fromRGB(0, 255, 0)
 end
 
--- Автосбор фруктов
-task.spawn(function()
-    while task.wait(2) do
-        if _G.AutoCollectFruit and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-            pcall(function()
-                local fruits = FindAllFruits()
-                local nearestFruit = nil
-                local nearestDist = math.huge
-                
-                for _, fruit in pairs(fruits) do
-                    local dist = (Player.Character.HumanoidRootPart.Position - fruit.Handle.Position).Magnitude
-                    if dist < nearestDist then
-                        nearestDist = dist
-                        nearestFruit = fruit
-                    end
+-- Кнопка ESP
+CreateToggle("Player ESP (Roles)", 70, function(val)
+    _G.ESP = val
+    if not val then
+        -- Очистка при выключении
+        for _, p in pairs(Players:GetPlayers()) do
+            if p.Character then
+                if p.Character:FindFirstChild("MM2Highlight") then p.Character.MM2Highlight:Destroy() end
+                if p.Character:FindFirstChild("Head") and p.Character.Head:FindFirstChild("RoleTag") then
+                    p.Character.Head.RoleTag:Destroy()
                 end
-                
-                if nearestFruit and nearestDist < 2000 then
-                    Player.Character.HumanoidRootPart.CFrame = nearestFruit.Handle.CFrame
-                    task.wait(0.3)
-                end
-            end)
+            end
+        end
+        local gunDrop = Workspace:FindFirstChild("GunDrop")
+        if gunDrop and gunDrop:FindFirstChild("GunHighlight") then
+            gunDrop.GunHighlight:Destroy()
         end
     end
 end)
 
--- Автофарм цикл
-task.spawn(function()
-    while task.wait() do
-        if _G.AutoFarm and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-            pcall(function()
-                -- 1. Квест
-    if _G.AutoQuest then
-                    local gui = Player:FindFirstChild("PlayerGui")
-                    if gui and gui:FindFirstChild("Main") and gui.Main:FindFirstChild("Quest") then
-                        if gui.Main.Quest.Visible == false then
-                            local lvl = Player.Data.Level.Value
-                            local questConfig = GetCurrentQuestConfig(lvl)
-                            if questConfig then
-                                ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", questConfig.Name, questConfig.Id)
-                            end
-                        end
-                    end
-                end
-
-                -- 2. Цель
-                local targetName = GetQuestTarget()
-                
-                -- Проверка текущей цели: жива ли она и соответствует ли квесту
-                if CurrentTarget then
-                    if not CurrentTarget.Parent or not CurrentTarget:FindFirstChild("Humanoid") or CurrentTarget.Humanoid.Health <= 0 then
-                        CurrentTarget = nil
-                    elseif targetName and not string.find(CurrentTarget.Name, targetName) then
-                        -- Если у нас есть квест, но мы бьем кого-то другого -> сброс
-                        CurrentTarget = nil
-                    end
-                end
-                
-                if not CurrentTarget then
-                    local enemies = Workspace:FindFirstChild("Enemies")
-                    local nearest = nil
-                    local nearestDist = math.huge
-                    if enemies and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-                        for _, v in pairs(enemies:GetChildren()) do
-                            if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
-                                -- Логика приоритета:
-                                -- 1. Если есть квест (targetName), ищем СТРОГО мобов с этим именем
-                                -- 2. Если квеста нет, ищем ближайшего любого
-                                
-                                local match = false
-                                if targetName then
-                                    if string.find(v.Name, targetName) then
-                                        match = true
-                                    end
-                                    -- Особая проверка для боссов (иногда имя в квесте чуть отличается)
-                                    if not match and (string.find(v.Name, "Boss") or v.Humanoid.MaxHealth > 10000) then
-                                         -- Если это босс и его имя похоже на квест
-                                         if string.find(targetName, v.Name) or string.find(v.Name, targetName) then
-                                             match = true
-                                         end
-                                    end
-                                else
-                                    match = true -- Берем любого, если нет квеста
-                                end
-                                
-                                if match then
-                                    local dist = (Player.Character.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude
-                                    if dist < nearestDist then
-                                        nearestDist = dist
-                                        nearest = v
-                                    end
-                                end
-                            end
-                        end
-                    end
-                    CurrentTarget = nearest
-                end
-                local target = CurrentTarget
-
-                -- 3. Атака
-                if target then
-                    local weapon = EquipBest()
-                    
-                    -- Применяем Hitbox Reach ТОЛЬКО к текущей цели (чтобы не было кучи)
-                    if _G.ReachAura and target:FindFirstChild("HumanoidRootPart") then
-                         target.HumanoidRootPart.Size = Vector3.new(50, 50, 50)
-                         target.HumanoidRootPart.Transparency = 0.8
-                         target.HumanoidRootPart.CanCollide = false
-                    end
-
-                    -- Позиция атаки: ГЛОБАЛЬНАЯ позиция над мобом
-                    -- Используем Vector3 для смещения, чтобы вращение моба не крутило нас
-                    local attackPos = target.HumanoidRootPart.Position + Vector3.new(0, 7, 0) -- Строго сверху (+7 блоков)
-                    
-                    -- Телепортация с взглядом на моба (LookAt)
-                    Player.Character.HumanoidRootPart.CFrame = CFrame.lookAt(attackPos, target.HumanoidRootPart.Position)
-                    Player.Character.HumanoidRootPart.Velocity = Vector3.zero -- Гасим инерцию
-                    
-                    if weapon then 
-                        weapon:Activate()
-                        if _G.MobileAttackOnly then
-                            local cam = Workspace.CurrentCamera
-                            local cx = math.floor(cam.ViewportSize.X/2)
-                            local cy = math.floor(cam.ViewportSize.Y/2)
-                            task.spawn(function()
-                                pcall(function()
-                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
-                                    task.wait(0.02)
-                                    VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1)
-                                end)
-                            end)
-                        else
-                            pcall(function()
-                                VirtualUser:CaptureController()
-                                VirtualUser:ClickButton1(Vector2.new(800, 600), Workspace.CurrentCamera.CFrame)
-                            end)
-                        end
-                    end
-                end
-            end)
-        end
-    end
-end)
-
--- ESP цикл с реальным отслеживанием спавна
+-- Логика ESP
 task.spawn(function()
     while task.wait(1) do
-        pcall(function()
-            local currentFruits = UpdateFruitTracking()
-            
-            if _G.FruitESP then
-                for _, fruit in pairs(currentFruits) do
-                    if not fruit.Handle:FindFirstChild("FruitESP") then
-                        local b = Instance.new("BillboardGui")
-                        b.Name = "FruitESP"
-                        b.Adornee = fruit.Handle
-                        b.Size = UDim2.new(0, 200, 0, 50)
-                        b.StudsOffset = Vector3.new(0, 2, 0)
-                        b.AlwaysOnTop = true
-                        
-                        local t = Instance.new("TextLabel")
-                        t.Parent = b
-                        t.Size = UDim2.new(1,0,1,0)
-                        t.BackgroundTransparency = 1
-                        t.TextColor3 = Color3.fromRGB(255, 0, 0)
-                        t.TextStrokeTransparency = 0
-                        t.Font = Enum.Font.SourceSansBold
-                        t.TextSize = 14
-                        t.Text = fruit.Name
-                        b.Parent = fruit.Handle
-                    end
-                    
-                    -- Обновление дистанции
-                    if fruit.Handle:FindFirstChild("FruitESP") and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-                        local dist = math.floor((Player.Character.HumanoidRootPart.Position - fruit.Handle.Position).Magnitude)
-                        fruit.Handle.FruitESP.TextLabel.Text = fruit.Name .. " [" .. dist .. "m]"
-                    end
-                end
-            else
-                -- Очистка ESP
-                for _, fruit in pairs(currentFruits) do
-                    if fruit.Handle:FindFirstChild("FruitESP") then
-                        fruit.Handle.FruitESP:Destroy()
-                    end
-                end
-            end
-            
-            -- Обновление таймера
-            if #currentFruits > 0 then
-                FruitTimerLabel.Text = "🍎 Фруктов: " .. #currentFruits .. " | След. через ~" .. math.floor(FruitSpawnData.AverageSpawnTime/60) .. "м"
-            else
-                if FruitSpawnData.LastDespawnTime > 0 then
-                    local elapsed = os.time() - FruitSpawnData.LastDespawnTime
-                    local remaining = math.max(0, FruitSpawnData.AverageSpawnTime - elapsed)
-                    local m = math.floor(remaining/60)
-                    local s = remaining % 60
-                    FruitTimerLabel.Text = string.format("⏰ Следующий фрукт: ~%02d:%02d", m, s)
-                else
-                    FruitTimerLabel.Text = "⏰ Ожидание данных о спавне..."
-                end
-            end
-        end)
-    end
-end)
-
--- Noclip
-RunService.Stepped:Connect(function()
-    if _G.AutoFarm and Player.Character then
-        for _, v in pairs(Player.Character:GetDescendants()) do
-            if v:IsA("BasePart") then v.CanCollide = false end
-        end
-    end
-end)
-
--- Hitbox Expander (Reach Aura) - Глобальный цикл удален, теперь применяется точечно к цели
---[[
-task.spawn(function()
-    while task.wait(0.5) do
-        if _G.ReachAura then
-             -- Логика перенесена в AutoFarm цикл для предотвращения лагов и "кучи"
-        end
-    end
-end)
-]]
-
--- // SERVER FRUIT HOP (Сервер Хоп) //
-local function ServerHop()
-    -- Попытка найти сервер через API (для большинства executor'ов)
-    -- Если не поддерживается, используем случайный хоп
-    pcall(function()
-        local PlaceID = game.PlaceId
-        local AllIDs = {}
-        local found = false
-        local pageCursor = ""
-        local num = 0
-        
-        -- Показываем статус
-        local statusLabel = Player.PlayerGui:FindFirstChild("BloxFruitMobileGUI_v3")
-        if statusLabel and statusLabel:FindFirstChild("FruitTimerLabel") then
-            statusLabel.FruitTimerLabel.Text = "⏳ Ищем новый сервер..."
-        end
-        
-        -- Пробуем найти сервера
-        while not found do
-            local success, result = pcall(function()
-                return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceID .. "/servers/Public?sortOrder=Asc&limit=100&cursor=" .. pageCursor))
-            end)
-            
-            if success and result and result.data then
-                for i, v in pairs(result.data) do
-                    -- Ищем сервер, где есть место (меньше максимума - 1) и не текущий
-                    if v.playing < v.maxPlayers and v.id ~= game.JobId then
-                        local possible = true
-                        -- Можно добавить проверку пинга, если нужно
-                        if possible then
-                            TeleportService:TeleportToPlaceInstance(PlaceID, v.id, Player)
-                            found = true
-                            break
-                        end
-                    end
-                end
-            end
-            
-            if found then break end
-            
-            if result and result.nextPageCursor then
-                pageCursor = result.nextPageCursor
-            else
-                -- Если список закончился, начинаем сначала (или просто случайный телепорт, если API не работает)
-                break
-            end
-            task.wait(0.5)
-        end
-        
-        if not found then
-            -- Fallback: просто перезаходим, надеясь на рандом
-             TeleportService:Teleport(PlaceID, Player)
-        end
-    end)
-end
-
--- Логика Server Fruit Hop
-task.spawn(function()
-    while task.wait(5) do
-        if _G.ServerFruitHop then
-            pcall(function()
-                local fruits = FindAllFruits()
-                if #fruits > 0 then
-                    -- Фрукты найдены! 
-                    -- Включаем сбор, если выключен
-                    if not _G.AutoCollectFruit then
-                         -- Опционально: можно принудительно включить
-                         -- _G.AutoCollectFruit = true 
-                         -- Но лучше просто телепортировать один раз
-                         local nearestFruit = fruits[1] -- Берем первый попавшийся
-                         if nearestFruit and nearestFruit:FindFirstChild("Handle") then
-                             Player.Character.HumanoidRootPart.CFrame = nearestFruit.Handle.CFrame
-                         end
-                    end
-                    -- Не меняем сервер, пока есть фрукты
-                else
-                    -- Фруктов нет -> меняем сервер
-                    ServerHop()
-                end
-            end)
-        end
-    end
-end)
-
--- Авто-прокачка статов (Smart)
-task.spawn(function()
-    while task.wait(0.2) do
-        if _G.AutoStats then
-            pcall(function()
-                local stat = _G.SelectStat or "Melee"
-                -- Корректировка имени стата для сервера если нужно (обычно совпадают)
-                -- Melee, Defense, Sword, Gun, Demon Fruit
-                
-                local args = {
-                    [1] = "AddPoint",
-                    [2] = stat,
-                    [3] = 1
-                }
-                ReplicatedStorage.Remotes.CommF_:InvokeServer(unpack(args))
-            end)
-        end
-    end
-end)
-
--- Авто-покупка рандомного фрукта
-task.spawn(function()
-    while task.wait(4) do
-        if _G.AutoBuyRandomFruit then
-            pcall(function()
-                 ReplicatedStorage.Remotes.CommF_:InvokeServer("Cousin", "Buy")
-            end)
-        end
-    end
-end)
-
--- Анти-кик
-local mt = getrawmetatable(game)
-local oldNamecall = mt.__namecall
-setreadonly(mt, false)
-mt.__namecall = newcclosure(function(...)
-    local method = getnamecallmethod()
-    local args = {...}
-    if method == "Kick" then
-        return wait(9e9)
-    end
-    return oldNamecall(...)
-end)
-setreadonly(mt, true)
-
--- Анти-AFK
-Player.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-end)
-
-print("✅ Blox Fruits Script v3 загружен!")
-print("📱 Нажми кнопку MENU для открытия")
-print("🍎 Реальное отслеживание спавна фруктов активировано!")
-
--- // SMART AI & PVP //
-
--- Функция использования скиллов
-local function UseSkill(key)
-    VirtualInputManager:SendKeyEvent(true, key, false, game)
-    task.wait(0.05)
-    VirtualInputManager:SendKeyEvent(false, key, false, game)
-end
-
--- Основной цикл ИИ
-task.spawn(function()
-    while task.wait(0.1) do
-        if _G.SmartAI then
-            pcall(function()
-                local target = CurrentTarget
-                
-                -- Если нет цели от фермы, но включен ПвП, ищем игрока
-                if not target and _G.AutoPvP then
-                    local minDist = math.huge
-                    local closest = nil
-                    for _, p in pairs(Players:GetPlayers()) do
-                        if p ~= Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
-                            local dist = (Player.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                            if dist < minDist then
-                                minDist = dist
-                                closest = p.Character
-                            end
-                        end
-                    end
-                    target = closest
-                    CurrentTarget = target -- Устанавливаем глобальную цель
-                end
-                
-                if target and target:FindFirstChild("HumanoidRootPart") and target:FindFirstChild("Humanoid") and target.Humanoid.Health > 0 then
-                    local dist = (Player.Character.HumanoidRootPart.Position - target.HumanoidRootPart.Position).Magnitude
-                    
-                    -- 1. Движение к цели (ПвП)
-                    if _G.AutoPvP and dist > 10 then
-                        Player.Character.HumanoidRootPart.CFrame = CFrame.new(Player.Character.HumanoidRootPart.Position, target.HumanoidRootPart.Position) * CFrame.new(0, 0, -5) -- Идем вперед
-                        -- Или телепорт если далеко
-                        if dist > 50 then
-                             Player.Character.HumanoidRootPart.CFrame = target.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0)
-                        else
-                            -- "Pro" движение: стрейф
-                            local t = os.clock()
-                            local offsetX = math.sin(t * 3) * 15
-                            local offsetZ = math.cos(t * 3) * 15
-                            local newPos = target.HumanoidRootPart.Position + Vector3.new(offsetX, 10, offsetZ)
-                            Player.Character.HumanoidRootPart.CFrame = CFrame.lookAt(newPos, target.HumanoidRootPart.Position)
-                        end
-                    end
-                    
-                    -- 2. Использование скиллов (Z, X, C, V)
-                    if dist < 100 then -- Дистанция атаки
-                         UseSkill(Enum.KeyCode.Z)
-                         task.wait(0.1)
-                         UseSkill(Enum.KeyCode.X)
-                         task.wait(0.1)
-                         UseSkill(Enum.KeyCode.C)
-                         task.wait(0.1)
-                         UseSkill(Enum.KeyCode.V)
-                         -- Клик мышкой между скиллами
-                         VirtualUser:ClickButton1(Vector2.new())
-                    end
-                    
-                    -- 3. Aimbot
-                    if _G.AimBot then
-                        local camera = Workspace.CurrentCamera
-                        camera.CFrame = CFrame.new(camera.CFrame.Position, target.HumanoidRootPart.Position)
-                    end
-                end
-            end)
-        end
-    end
-end)
-
--- Player ESP (Wallhack)
-task.spawn(function()
-    while task.wait(1) do
-        if _G.PlayerESP then
+        if _G.ESP then
             for _, p in pairs(Players:GetPlayers()) do
-                if p ~= Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Head") then
+                    local role, color = GetRole(p)
+                    
                     -- Подсветка (Highlight)
-                    if not p.Character:FindFirstChild("ESPHighlight") then
-                        local hl = Instance.new("Highlight")
-                        hl.Name = "ESPHighlight"
+                    local hl = p.Character:FindFirstChild("MM2Highlight")
+                    if not hl then
+                        hl = Instance.new("Highlight")
+                        hl.Name = "MM2Highlight"
                         hl.Parent = p.Character
-                        hl.FillColor = Color3.fromRGB(255, 0, 0)
-                        hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                        hl.FillTransparency = 0.5
-                        hl.OutlineTransparency = 0
-                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- Видно сквозь стены
+                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                     end
+                    hl.FillColor = color
+                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    hl.FillTransparency = 0.5
                     
                     -- Текст над головой
-                    if not p.Character.HumanoidRootPart:FindFirstChild("ESPName") then
-                        local bg = Instance.new("BillboardGui")
-                        bg.Name = "ESPName"
-                        bg.Parent = p.Character.HumanoidRootPart
-                        bg.Adornee = p.Character.HumanoidRootPart
+                    local bg = p.Character.Head:FindFirstChild("RoleTag")
+                    if not bg then
+                        bg = Instance.new("BillboardGui")
+                        bg.Name = "RoleTag"
                         bg.Size = UDim2.new(0, 200, 0, 50)
                         bg.StudsOffset = Vector3.new(0, 3, 0)
                         bg.AlwaysOnTop = true
+                        bg.Parent = p.Character.Head
                         
                         local txt = Instance.new("TextLabel")
                         txt.Parent = bg
                         txt.Size = UDim2.new(1, 0, 1, 0)
                         txt.BackgroundTransparency = 1
-                        txt.Text = p.Name
-                        txt.TextColor3 = Color3.fromRGB(255, 0, 0)
                         txt.TextStrokeTransparency = 0
                         txt.Font = Enum.Font.SourceSansBold
-                        txt.TextSize = 14
+                        txt.TextSize = 16
+                        txt.TextColor3 = color
+                        txt.Text = role
                     else
-                        -- Обновляем дистанцию
-                        local dist = math.floor((Player.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude)
-                        p.Character.HumanoidRootPart.ESPName.TextLabel.Text = p.Name .. " [" .. dist .. "m]"
+                        bg.TextLabel.Text = role .. " [" .. math.floor((LocalPlayer.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude) .. "m]"
+                        bg.TextLabel.TextColor3 = color
+                        hl.FillColor = color
                     end
                 end
             end
-        else
-            -- Удаляем ESP если выключено
-            for _, p in pairs(Players:GetPlayers()) do
-                if p.Character then
-                    if p.Character:FindFirstChild("ESPHighlight") then p.Character.ESPHighlight:Destroy() end
-                    if p.Character:FindFirstChild("HumanoidRootPart") and p.Character.HumanoidRootPart:FindFirstChild("ESPName") then
-                        p.Character.HumanoidRootPart.ESPName:Destroy()
-                    end
-                end
-            end
-        end
-    end
-end)
-
--- Auto Farm Chests
-task.spawn(function()
-    while task.wait() do
-        if _G.AutoFarmChests and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-             -- Ищем сундуки
-             local nearestChest = nil
-             local nearestDist = math.huge
-             
-             for _, v in pairs(Workspace:GetDescendants()) do
-                 if v.Name:find("Chest") or v.Name:find("Treasure") then
-                     if v:IsA("Part") or v:IsA("MeshPart") then
-                         local dist = (Player.Character.HumanoidRootPart.Position - v.Position).Magnitude
-                         if dist < nearestDist then
-                             nearestDist = dist
-                             nearestChest = v
-                         end
-                     end
-                 end
-             end
-             
-             if nearestChest then
-                 -- Телепорт к сундуку
-                 Player.Character.HumanoidRootPart.CFrame = nearestChest.CFrame
-                 task.wait(0.5) -- Ждем сбора
-             end
-        end
-    end
-end)
-
--- Auto Aura (Haki)
-task.spawn(function()
-    while task.wait(5) do
-        if _G.AutoHaki then
-             pcall(function()
-                 local hasHaki = Player.Character and Player.Character:FindFirstChild("HasBuso")
-                 if not hasHaki then
-                     ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
-                 end
-             end)
-        end
-    end
-end)
-
--- Chest ESP
-task.spawn(function()
-    while task.wait(2) do
-        pcall(function()
-             if _G.ChestESP then
-                 for _, v in pairs(Workspace:GetDescendants()) do
-                     if string.find(v.Name, "Chest") and (v:IsA("Part") or v:IsA("MeshPart")) then
-                         if not v:FindFirstChild("ChestESP") then
-                             local b = Instance.new("BillboardGui")
-                             b.Name = "ChestESP"
-                             b.Adornee = v
-                             b.Size = UDim2.new(0, 100, 0, 30)
-                             b.StudsOffset = Vector3.new(0, 2, 0)
-                             b.AlwaysOnTop = true
-                             
-                             local t = Instance.new("TextLabel")
-                             t.Parent = b
-                             t.Size = UDim2.new(1,0,1,0)
-                             t.BackgroundTransparency = 1
-                             t.TextColor3 = Color3.fromRGB(255, 255, 0) -- Желтый
-                             t.TextStrokeTransparency = 0
-                             t.Font = Enum.Font.SourceSansBold
-                             t.TextSize = 12
-                             t.Text = "Chest"
-                             b.Parent = v
-                         end
-                     end
-                 end
-             else
-                 for _, v in pairs(Workspace:GetDescendants()) do
-                     if v.Name == "ChestESP" then v:Destroy() end
-                 end
-             end
-        end)
-    end
-end)
-
--- Speed Boost
-task.spawn(function()
-    while task.wait() do
-        if _G.SpeedBoost and Player.Character and Player.Character:FindFirstChild("Humanoid") then
-            Player.Character.Humanoid.WalkSpeed = 60
-        end
-    end
-end)
-
--- Walk On Water (Jesus Mode)
-task.spawn(function()
-    local platform = Instance.new("Part")
-    platform.Name = "WaterWalker"
-    platform.Size = Vector3.new(20, 1, 20)
-    platform.Transparency = 0.8
-    platform.Anchored = true
-    platform.CanCollide = true
-    platform.Material = Enum.Material.Glass
-    platform.Color = Color3.fromRGB(0, 255, 255)
-    
-    while task.wait() do
-        if _G.WalkOnWater and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = Player.Character.HumanoidRootPart
-            -- Уровень воды обычно чуть ниже 0 или на 0, но лучше держать платформу прямо под ногами если мы над водой
-            -- В Blox Fruits вода не всегда на Y=0, но для простоты будем держать платформу под игроком
             
-            -- Проверяем, над водой ли мы (Raycast вниз)
-            -- Но проще просто держать платформу под ногами, если включено
-            platform.Parent = Workspace
-            platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 3.5, hrp.Position.Z)
-        else
-            if platform.Parent then platform.Parent = nil end
+            -- ESP на выпавший пистолет
+            local gunDrop = Workspace:FindFirstChild("GunDrop")
+            if gunDrop then
+                local hl = gunDrop:FindFirstChild("GunHighlight")
+                if not hl then
+                    hl = Instance.new("Highlight")
+                    hl.Name = "GunHighlight"
+                    hl.FillColor = Color3.fromRGB(255, 255, 0) -- Желтый
+                    hl.OutlineColor = Color3.fromRGB(255, 0, 0)
+                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    hl.Parent = gunDrop
+                end
+            end
         end
     end
 end)
 
--- Infinite Geppo
-local UserInputService = game:GetService("UserInputService")
-UserInputService.JumpRequest:Connect(function()
-    if _G.InfGeppo and Player.Character and Player.Character:FindFirstChild("Humanoid") then
-        Player.Character.Humanoid:ChangeState("Jumping")
+-- 2. Auto Farm Coins (Авто-сбор монет)
+CreateToggle("Auto Farm Coins", 120, function(val)
+    _G.CoinFarm = val
+end)
+
+task.spawn(function()
+    while task.wait() do
+        if _G.CoinFarm and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            local map = Workspace:FindFirstChild("Normal")
+            local coinContainer = map and map:FindFirstChild("CoinContainer") or nil
+            local hrp = LocalPlayer.Character.HumanoidRootPart
+            local humanoid = LocalPlayer.Character.Humanoid
+            local nearestCoin
+            local nearestDist = math.huge
+            if coinContainer then
+                for _, coin in pairs(coinContainer:GetChildren()) do
+                    if coin.Name == "Coin_Server" and coin.Transparency == 0 then
+                        local d = (hrp.Position - coin.Position).Magnitude
+                        if d < nearestDist then
+                            nearestDist = d
+                            nearestCoin = coin
+                        end
+                    end
+                end
+            end
+            if nearestCoin then
+                local path = PathfindingService:CreatePath()
+                path:ComputeAsync(hrp.Position, nearestCoin.Position)
+                if path.Status == Enum.PathStatus.Success then
+                    for _, wp in ipairs(path:GetWaypoints()) do
+                        humanoid:MoveTo(wp.Position)
+                        humanoid.MoveToFinished:Wait()
+                        if not _G.CoinFarm or nearestCoin.Transparency ~= 0 then
+                            break
+                        end
+                    end
+                else
+                    humanoid:MoveTo(nearestCoin.Position)
+                    humanoid.MoveToFinished:Wait()
+                end
+            else
+                task.wait(0.2)
+            end
+        end
     end
 end)
+
+-- 3. Speed Boost (Скорость)
+CreateToggle("Speed Boost (Walkspeed)", 170, function(val)
+    _G.Speed = val
+end)
+
+task.spawn(function()
+    while task.wait() do
+        if _G.Speed and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = 24
+        end
+    end
+end)
+
+-- 4. God Mode / Ghost (Призрачный режим)
+CreateToggle("Ghost Mode (Invis)", 220, function(val)
+    if LocalPlayer.Character then
+        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+            if v:IsA("BasePart") or v:IsA("Decal") then
+                v.Transparency = val and 1 or 0
+            end
+        end
+    end
+end)
+
+CreateToggle("Auto Aim", 270, function(val)
+    _G.AutoAim = val
+end)
+
+task.spawn(function()
+    while task.wait() do
+        if _G.AutoAim and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local camera = Workspace.CurrentCamera
+            local target
+            local targetColor
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Head") then
+                    local role, color = GetRole(p)
+                    if role == "Murderer" then
+                        target = p
+                        targetColor = color
+                        break
+                    end
+                end
+            end
+            if not target then
+                local nearest
+                local dist = math.huge
+                for _, p in pairs(Players:GetPlayers()) do
+                    if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Head") then
+                        local d = (LocalPlayer.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                        if d < dist then
+                            dist = d
+                            nearest = p
+                        end
+                    end
+                end
+                target = nearest
+            end
+            if target and target.Character and target.Character:FindFirstChild("Head") then
+                local head = target.Character.Head
+                camera.CFrame = CFrame.new(camera.CFrame.Position, head.Position)
+            end
+        end
+    end
+end)
+-- Кнопка закрытия
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Text = "CLOSE"
+CloseBtn.Size = UDim2.new(0.9, 0, 0, 40)
+CloseBtn.Position = UDim2.new(0.05, 0, 0, 340)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.SourceSansBold
+CloseBtn.TextSize = 18
+CloseBtn.Parent = MainFrame
+
+CloseBtn.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+print("MM2 Script Loaded!")
