@@ -3,6 +3,8 @@ local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local PathfindingService = game:GetService("PathfindingService")
+local VirtualUser = game:GetService("VirtualUser")
+local UserInputService = game:GetService("UserInputService")
 
 local _G = _G or {}
 _G.ESP = false
@@ -10,6 +12,10 @@ _G.CoinFarm = false
 _G.Speed = false
 _G.XRay = false
 _G.AutoAim = false
+_G.AutoShoot = false
+_G.AutoKnife = false
+_G.AntiAFK = false
+_G.AutoGrabGun = false
 
 -- // GUI SETUP //
 local ScreenGui = Instance.new("ScreenGui")
@@ -19,7 +25,7 @@ ScreenGui.ResetOnSpawn = false
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 320, 0, 400)
+MainFrame.Size = UDim2.new(0, 320, 0, 480)
 MainFrame.Position = UDim2.new(0.5, -160, 0.5, -200)
 MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 MainFrame.BorderSizePixel = 0
@@ -302,6 +308,141 @@ task.spawn(function()
     end
 end)
 
+CreateToggle("Auto Shoot (Sheriff)", 310, function(val)
+    _G.AutoShoot = val
+end)
+task.spawn(function()
+    while task.wait() do
+        if _G.AutoShoot and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            local role = GetRole(LocalPlayer)
+            if role == "Sheriff" then
+                local gun = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Gun")
+                if gun then
+                    if gun.Parent == LocalPlayer.Backpack and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                        LocalPlayer.Character.Humanoid:EquipTool(gun)
+                    end
+                    local target
+                    for _, p in pairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChild("HumanoidRootPart") then
+                            local r = GetRole(p)
+                            if r == "Murderer" then
+                                target = p
+                                break
+                            end
+                        end
+                    end
+                    if target and target.Character and target.Character:FindFirstChild("Head") and LocalPlayer.Character:FindFirstChild("Head") then
+                        local origin = LocalPlayer.Character.Head.Position
+                        local goal = target.Character.Head.Position
+                        local params = RaycastParams.new()
+                        params.FilterType = Enum.RaycastFilterType.Blacklist
+                        params.FilterDescendantsInstances = {LocalPlayer.Character}
+                        local result = Workspace:Raycast(origin, (goal - origin), params)
+                        local dist = (origin - goal).Magnitude
+                        if dist <= 200 and (not result or (result.Instance and result.Instance:IsDescendantOf(target.Character))) then
+                            gun:Activate()
+                            task.wait(0.25)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+CreateToggle("Auto Knife (Murderer)", 355, function(val)
+    _G.AutoKnife = val
+end)
+task.spawn(function()
+    while task.wait() do
+        if _G.AutoKnife and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            local role = GetRole(LocalPlayer)
+            if role == "Murderer" then
+                local knife = LocalPlayer.Character:FindFirstChild("Knife") or LocalPlayer.Backpack:FindFirstChild("Knife")
+                if knife then
+                    if knife.Parent == LocalPlayer.Backpack and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                        LocalPlayer.Character.Humanoid:EquipTool(knife)
+                    end
+                    local target
+                    for _, p in pairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                            local r = GetRole(p)
+                            if r == "Sheriff" then
+                                target = p
+                                break
+                            end
+                        end
+                    end
+                    if not target then
+                        local nearest
+                        local nd = math.huge
+                        for _, p in pairs(Players:GetPlayers()) do
+                            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                                local d = (LocalPlayer.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                                if d < nd then
+                                    nd = d
+                                    nearest = p
+                                end
+                            end
+                        end
+                        target = nearest
+                    end
+                    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                        local d = (LocalPlayer.Character.HumanoidRootPart.Position - target.Character.HumanoidRootPart.Position).Magnitude
+                        if d <= 4 then
+                            knife:Activate()
+                            task.wait(0.2)
+                        elseif d <= 60 then
+                            knife:Activate()
+                            task.wait(0.4)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+CreateToggle("Auto Grab Gun", 400, function(val)
+    _G.AutoGrabGun = val
+end)
+task.spawn(function()
+    while task.wait() do
+        if _G.AutoGrabGun and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local gd = Workspace:FindFirstChild("GunDrop")
+            if gd then
+                local humanoid = LocalPlayer.Character.Humanoid
+                local hrp = LocalPlayer.Character.HumanoidRootPart
+                local path = PathfindingService:CreatePath()
+                path:ComputeAsync(hrp.Position, gd.Position)
+                if path.Status == Enum.PathStatus.Success then
+                    for _, wp in ipairs(path:GetWaypoints()) do
+                        humanoid:MoveTo(wp.Position)
+                        humanoid.MoveToFinished:Wait()
+                        if not _G.AutoGrabGun then
+                            break
+                        end
+                    end
+                else
+                    humanoid:MoveTo(gd.Position)
+                    humanoid.MoveToFinished:Wait()
+                end
+            end
+        end
+    end
+end)
+
+CreateToggle("Anti AFK", 445, function(val)
+    _G.AntiAFK = val
+end)
+task.spawn(function()
+    while task.wait(30) do
+        if _G.AntiAFK then
+            VirtualUser:CaptureController()
+            VirtualUser:ClickButton2(Vector2.new(0,0))
+        end
+    end
+end)
 -- Кнопка закрытия и открытия
 local OpenBtn = Instance.new("TextButton")
 OpenBtn.Name = "OpenBtn"
@@ -319,11 +460,18 @@ OpenBtn.MouseButton1Click:Connect(function()
     MainFrame.Visible = true
     OpenBtn.Visible = false
 end)
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.KeyCode == Enum.KeyCode.G then
+        MainFrame.Visible = not MainFrame.Visible
+        OpenBtn.Visible = not MainFrame.Visible
+    end
+end)
 
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Text = "HIDE"
 CloseBtn.Size = UDim2.new(0.9, 0, 0, 40)
-CloseBtn.Position = UDim2.new(0.05, 0, 0, 340)
+CloseBtn.Position = UDim2.new(0.05, 0, 0, 420)
 CloseBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseBtn.Font = Enum.Font.SourceSansBold
