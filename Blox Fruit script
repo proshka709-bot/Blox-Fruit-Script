@@ -4,6 +4,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local VirtualUser = game:GetService("VirtualUser")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
 
 local Player = Players.LocalPlayer
 local _G = _G or {} 
@@ -13,6 +15,7 @@ _G.AutoFarm = false
 _G.AutoQuest = false
 _G.FruitESP = false
 _G.AutoCollectFruit = false
+_G.ServerFruitHop = false -- Сервер Хоп для фруктов
 _G.ReachAura = true -- Включено по умолчанию для удобства
 _G.AutoStats = false -- Авто-статы
 _G.AttackDist = 3
@@ -176,6 +179,7 @@ CreateSwitch("Auto Farm", _G.AutoFarm, function(val) _G.AutoFarm = val end)
 CreateSwitch("Auto Quest", _G.AutoQuest, function(val) _G.AutoQuest = val end)
 CreateSwitch("Fruit ESP", _G.FruitESP, function(val) _G.FruitESP = val end)
 CreateSwitch("Auto Collect Fruit", _G.AutoCollectFruit, function(val) _G.AutoCollectFruit = val end)
+CreateSwitch("Server Fruit Hop", _G.ServerFruitHop, function(val) _G.ServerFruitHop = val end)
 CreateSwitch("Auto Stats (Melee)", _G.AutoStats, function(val) _G.AutoStats = val end)
 CreateSwitch("Hitbox Reach", _G.ReachAura, function(val) _G.ReachAura = val end)
 
@@ -541,6 +545,90 @@ task.spawn(function()
                             end
                         end
                     end
+                end
+            end)
+        end
+    end
+end)
+
+-- // SERVER FRUIT HOP (Сервер Хоп) //
+local function ServerHop()
+    -- Попытка найти сервер через API (для большинства executor'ов)
+    -- Если не поддерживается, используем случайный хоп
+    pcall(function()
+        local PlaceID = game.PlaceId
+        local AllIDs = {}
+        local found = false
+        local pageCursor = ""
+        local num = 0
+        
+        -- Показываем статус
+        local statusLabel = Player.PlayerGui:FindFirstChild("BloxFruitMobileGUI_v3")
+        if statusLabel and statusLabel:FindFirstChild("FruitTimerLabel") then
+            statusLabel.FruitTimerLabel.Text = "⏳ Ищем новый сервер..."
+        end
+        
+        -- Пробуем найти сервера
+        while not found do
+            local success, result = pcall(function()
+                return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceID .. "/servers/Public?sortOrder=Asc&limit=100&cursor=" .. pageCursor))
+            end)
+            
+            if success and result and result.data then
+                for i, v in pairs(result.data) do
+                    -- Ищем сервер, где есть место (меньше максимума - 1) и не текущий
+                    if v.playing < v.maxPlayers and v.id ~= game.JobId then
+                        local possible = true
+                        -- Можно добавить проверку пинга, если нужно
+                        if possible then
+                            TeleportService:TeleportToPlaceInstance(PlaceID, v.id, Player)
+                            found = true
+                            break
+                        end
+                    end
+                end
+            end
+            
+            if found then break end
+            
+            if result and result.nextPageCursor then
+                pageCursor = result.nextPageCursor
+            else
+                -- Если список закончился, начинаем сначала (или просто случайный телепорт, если API не работает)
+                break
+            end
+            task.wait(0.5)
+        end
+        
+        if not found then
+            -- Fallback: просто перезаходим, надеясь на рандом
+             TeleportService:Teleport(PlaceID, Player)
+        end
+    end)
+end
+
+-- Логика Server Fruit Hop
+task.spawn(function()
+    while task.wait(5) do
+        if _G.ServerFruitHop then
+            pcall(function()
+                local fruits = FindAllFruits()
+                if #fruits > 0 then
+                    -- Фрукты найдены! 
+                    -- Включаем сбор, если выключен
+                    if not _G.AutoCollectFruit then
+                         -- Опционально: можно принудительно включить
+                         -- _G.AutoCollectFruit = true 
+                         -- Но лучше просто телепортировать один раз
+                         local nearestFruit = fruits[1] -- Берем первый попавшийся
+                         if nearestFruit and nearestFruit:FindFirstChild("Handle") then
+                             Player.Character.HumanoidRootPart.CFrame = nearestFruit.Handle.CFrame
+                         end
+                    end
+                    -- Не меняем сервер, пока есть фрукты
+                else
+                    -- Фруктов нет -> меняем сервер
+                    ServerHop()
                 end
             end)
         end
