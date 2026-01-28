@@ -1,273 +1,229 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
-local LocalPlayer = Players.LocalPlayer
-local PathfindingService = game:GetService("PathfindingService")
-local VirtualUser = game:GetService("VirtualUser")
 local UserInputService = game:GetService("UserInputService")
+local PathfindingService = game:GetService("PathfindingService")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
 
-local _G = _G or {}
-_G.ESP = false
-_G.CoinFarm = false
-_G.Speed = false
-_G.XRay = false
-_G.AutoAim = false
-_G.AutoShoot = false
-_G.AutoKnife = false
-_G.AntiAFK = false
-_G.AutoGrabGun = false
+-- // SETTINGS & STATE //
+local State = {
+    ESP = false,
+    CoinFarm = false,
+    Speed = false,
+    AutoAim = false,
+    AutoShoot = false,
+    AutoKnife = false,
+    AutoGrab = false,
+    AntiAFK = false,
+    SpeedVal = 24
+}
 
--- // GUI SETUP //
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "MM2_GUI_v1"
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-ScreenGui.ResetOnSpawn = false
+-- // UI LIBRARY (Simple & Modern) //
+local Library = {}
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 320, 0, 480)
-MainFrame.Position = UDim2.new(0.5, -160, 0.5, -200)
-MainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.Parent = ScreenGui
+function Library:CreateWindow()
+    -- Cleanup old GUI
+    if LocalPlayer.PlayerGui:FindFirstChild("MM2_Modern_UI") then
+        LocalPlayer.PlayerGui.MM2_Modern_UI:Destroy()
+    end
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = MainFrame
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "MM2_Modern_UI"
+    ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
--- Заголовок
-local Title = Instance.new("TextLabel")
-Title.Text = "MM2 SCRIPT v1.0 (ESP + FARM)"
-Title.Size = UDim2.new(1, 0, 0, 50)
-Title.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 22
-Title.Parent = MainFrame
-
-local TitleCorner = Instance.new("UICorner")
-TitleCorner.CornerRadius = UDim.new(0, 10)
-TitleCorner.Parent = Title
-
--- Функция создания кнопок
-local function CreateToggle(text, yPos, callback)
-    local btn = Instance.new("TextButton")
-    btn.Text = text
-    btn.Size = UDim2.new(0.9, 0, 0, 40)
-    btn.Position = UDim2.new(0.05, 0, 0, yPos)
-    btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 18
-    btn.Parent = MainFrame
+    -- Toggle Button (Mobile Friendly)
+    local ToggleBtn = Instance.new("TextButton")
+    ToggleBtn.Name = "ToggleBtn"
+    ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
+    ToggleBtn.Position = UDim2.new(0, 10, 0.5, -25)
+    ToggleBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleBtn.Text = "M"
+    ToggleBtn.TextSize = 24
+    ToggleBtn.Font = Enum.Font.GothamBold
+    ToggleBtn.Parent = ScreenGui
     
-    local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, 8)
-    btnCorner.Parent = btn
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(1, 0)
+    UICorner.Parent = ToggleBtn
+
+    -- Main Frame
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Size = UDim2.new(0, 350, 0, 500)
+    MainFrame.Position = UDim2.new(0.5, -175, 0.5, -250)
+    MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    MainFrame.BorderSizePixel = 0
+    MainFrame.Visible = false
+    MainFrame.Parent = ScreenGui
     
-    local on = false
-    btn.MouseButton1Click:Connect(function()
-        on = not on
-        if on then
-            btn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-            btn.Text = text .. " [ON]"
-        else
-            btn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-            btn.Text = text
-        end
-        callback(on)
+    -- Draggable
+    local Drag = Instance.new("UIDragDetector")
+    Drag.Parent = MainFrame
+
+    local MainCorner = Instance.new("UICorner")
+    MainCorner.CornerRadius = UDim.new(0, 12)
+    MainCorner.Parent = MainFrame
+
+    -- Title
+    local Title = Instance.new("TextLabel")
+    Title.Text = "MM2 PRO v2.0"
+    Title.Size = UDim2.new(1, -40, 0, 50)
+    Title.Position = UDim2.new(0, 20, 0, 0)
+    Title.BackgroundTransparency = 1
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.GothamBlack
+    Title.TextSize = 24
+    Title.TextXAlignment = Enum.TextXAlignment.Left
+    Title.Parent = MainFrame
+
+    -- Container for buttons
+    local Container = Instance.new("ScrollingFrame")
+    Container.Size = UDim2.new(1, -20, 1, -60)
+    Container.Position = UDim2.new(0, 10, 0, 60)
+    Container.BackgroundTransparency = 1
+    Container.ScrollBarThickness = 4
+    Container.Parent = MainFrame
+    
+    local UIList = Instance.new("UIListLayout")
+    UIList.Padding = UDim.new(0, 10)
+    UIList.SortOrder = Enum.SortOrder.LayoutOrder
+    UIList.Parent = Container
+
+    -- Toggle Logic
+    ToggleBtn.MouseButton1Click:Connect(function()
+        MainFrame.Visible = not MainFrame.Visible
     end)
+    
+    -- Mobile Check
+    if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+        MainFrame.Size = UDim2.new(0.6, 0, 0.7, 0)
+        MainFrame.Position = UDim2.new(0.2, 0, 0.15, 0)
+        ToggleBtn.Position = UDim2.new(0, 10, 0.3, 0)
+    end
+
+    return Container
 end
 
--- // ФУНКЦИИ //
+function Library:CreateButton(container, text, callback)
+    local Button = Instance.new("TextButton")
+    Button.Size = UDim2.new(1, -10, 0, 45)
+    Button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    Button.Text = text
+    Button.TextColor3 = Color3.fromRGB(200, 200, 200)
+    Button.Font = Enum.Font.GothamBold
+    Button.TextSize = 16
+    Button.Parent = container
+    
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = Button
+    
+    local enabled = false
+    Button.MouseButton1Click:Connect(function()
+        enabled = not enabled
+        if enabled then
+            Button.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+            Button.TextColor3 = Color3.fromRGB(255, 255, 255)
+            Button.Text = text .. " [ON]"
+        else
+            Button.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+            Button.TextColor3 = Color3.fromRGB(200, 200, 200)
+            Button.Text = text
+        end
+        callback(enabled)
+    end)
+    return Button
+end
 
--- 1. Определение ролей (ESP)
+-- // GAME LOGIC //
+
 local function GetRole(plr)
-    local hasKnife = false
-    local hasGun = false
+    if not plr or not plr.Parent then return "Unknown" end
+    local backpack = plr:FindFirstChild("Backpack")
+    local char = plr.Character
     
-    -- Проверяем Backpack (инвентарь) и Character (в руках)
-    if plr.Backpack:FindFirstChild("Knife") or (plr.Character and plr.Character:FindFirstChild("Knife")) then
-        hasKnife = true
+    if not backpack or not char then return "Unknown" end
+    
+    if backpack:FindFirstChild("Knife") or char:FindFirstChild("Knife") then
+        return "Murderer"
+    elseif backpack:FindFirstChild("Gun") or char:FindFirstChild("Gun") then
+        return "Sheriff"
     end
     
-    if plr.Backpack:FindFirstChild("Gun") or (plr.Character and plr.Character:FindFirstChild("Gun")) then
-        hasGun = true
-    end
-    
-    -- Иногда оружие скрыто или имеет другое имя, но стандартно так:
-    if hasKnife then return "Murderer", Color3.fromRGB(255, 0, 0) end
-    if hasGun then return "Sheriff", Color3.fromRGB(0, 0, 255) end
-    return "Innocent", Color3.fromRGB(0, 255, 0)
+    return "Innocent"
 end
 
--- Кнопка ESP
-CreateToggle("Player ESP (Roles)", 70, function(val)
-    _G.ESP = val
-    if not val then
-        -- Очистка при выключении
-        for _, p in pairs(Players:GetPlayers()) do
-            if p.Character then
-                if p.Character:FindFirstChild("MM2Highlight") then p.Character.MM2Highlight:Destroy() end
-                if p.Character:FindFirstChild("Head") and p.Character.Head:FindFirstChild("RoleTag") then
-                    p.Character.Head.RoleTag:Destroy()
-                end
-            end
-        end
-        local gunDrop = Workspace:FindFirstChild("GunDrop")
-        if gunDrop and gunDrop:FindFirstChild("GunHighlight") then
-            gunDrop.GunHighlight:Destroy()
-        end
-    end
-end)
-
--- Логика ESP
-task.spawn(function()
-    while task.wait(1) do
-        if _G.ESP then
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Head") then
-                    local role, color = GetRole(p)
-                    
-                    -- Подсветка (Highlight)
-                    local hl = p.Character:FindFirstChild("MM2Highlight")
-                    if not hl then
-                        hl = Instance.new("Highlight")
-                        hl.Name = "MM2Highlight"
-                        hl.Parent = p.Character
-                        hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    end
-                    hl.FillColor = color
-                    hl.OutlineColor = Color3.fromRGB(255, 255, 255)
-                    hl.FillTransparency = 0.5
-                    
-                    -- Текст над головой
-                    local bg = p.Character.Head:FindFirstChild("RoleTag")
-                    if not bg then
-                        bg = Instance.new("BillboardGui")
-                        bg.Name = "RoleTag"
-                        bg.Size = UDim2.new(0, 200, 0, 50)
-                        bg.StudsOffset = Vector3.new(0, 3, 0)
-                        bg.AlwaysOnTop = true
-                        bg.Parent = p.Character.Head
-                        
-                        local txt = Instance.new("TextLabel")
-                        txt.Parent = bg
-                        txt.Size = UDim2.new(1, 0, 1, 0)
-                        txt.BackgroundTransparency = 1
-                        txt.TextStrokeTransparency = 0
-                        txt.Font = Enum.Font.SourceSansBold
-                        txt.TextSize = 16
-                        txt.TextColor3 = color
-                        txt.Text = role
-                    else
-                        bg.TextLabel.Text = role .. " [" .. math.floor((LocalPlayer.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude) .. "m]"
-                        bg.TextLabel.TextColor3 = color
-                        hl.FillColor = color
-                    end
-                end
+-- ESP
+local function UpdateESP()
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local role = GetRole(p)
+            local color = Color3.fromRGB(0, 255, 0) -- Innocent
+            
+            if role == "Murderer" then color = Color3.fromRGB(255, 0, 0)
+            elseif role == "Sheriff" then color = Color3.fromRGB(0, 0, 255)
             end
             
-            -- ESP на выпавший пистолет
-            local gunDrop = Workspace:FindFirstChild("GunDrop")
-            if gunDrop then
-                local hl = gunDrop:FindFirstChild("GunHighlight")
-                if not hl then
-                    hl = Instance.new("Highlight")
-                    hl.Name = "GunHighlight"
-                    hl.FillColor = Color3.fromRGB(255, 255, 0) -- Желтый
-                    hl.OutlineColor = Color3.fromRGB(255, 0, 0)
-                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                    hl.Parent = gunDrop
-                end
+            local hl = p.Character:FindFirstChild("MM2Highlight")
+            if not hl then
+                hl = Instance.new("Highlight")
+                hl.Name = "MM2Highlight"
+                hl.Parent = p.Character
+                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
             end
+            
+            hl.FillColor = color
+            hl.OutlineColor = Color3.fromRGB(255, 255, 255)
+            hl.FillTransparency = 0.5
+            hl.Enabled = State.ESP
         end
     end
-end)
+end
 
--- 2. Auto Farm Coins (Авто-сбор монет)
-CreateToggle("Auto Farm Coins", 120, function(val)
-    _G.CoinFarm = val
-end)
+-- Initialize
+local Container = Library:CreateWindow()
 
-task.spawn(function()
-    while task.wait() do
-        if _G.CoinFarm and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            local map = Workspace:FindFirstChild("Normal")
-            local coinContainer = map and map:FindFirstChild("CoinContainer") or nil
-            local hrp = LocalPlayer.Character.HumanoidRootPart
-            local humanoid = LocalPlayer.Character.Humanoid
-            local nearestCoin
-            local nearestDist = math.huge
-            if coinContainer then
-                for _, coin in pairs(coinContainer:GetChildren()) do
-                    if coin.Name == "Coin_Server" and coin.Transparency == 0 then
-                        local d = (hrp.Position - coin.Position).Magnitude
-                        if d < nearestDist then
-                            nearestDist = d
-                            nearestCoin = coin
-                        end
-                    end
-                end
-            end
-            if nearestCoin then
-                local path = PathfindingService:CreatePath()
-                path:ComputeAsync(hrp.Position, nearestCoin.Position)
-                if path.Status == Enum.PathStatus.Success then
-                    for _, wp in ipairs(path:GetWaypoints()) do
-                        humanoid:MoveTo(wp.Position)
-                        humanoid.MoveToFinished:Wait()
-                        if not _G.CoinFarm or nearestCoin.Transparency ~= 0 then
-                            break
-                        end
-                    end
-                else
-                    humanoid:MoveTo(nearestCoin.Position)
-                    humanoid.MoveToFinished:Wait()
-                end
-            else
-                task.wait(0.2)
-            end
-        end
-    end
-end)
-
--- 3. Speed Boost (Скорость)
-CreateToggle("Speed Boost (Walkspeed)", 170, function(val)
-    _G.Speed = val
-end)
-
-task.spawn(function()
-    while task.wait() do
-        if _G.Speed and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = 24
-        end
-    end
-end)
-
--- 4. God Mode / Ghost (Призрачный режим)
-CreateToggle("Ghost Mode (Invis)", 220, function(val)
-    if LocalPlayer.Character then
-        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
-            if v:IsA("BasePart") or v:IsA("Decal") then
-                v.Transparency = val and 1 or 0
-            end
-        end
-    end
-end)
-
--- 5. Silent Aim (Hitbox Expander)
--- "Сделай так, чтобы пуля наводилась, а не камера"
--- Самый надежный способ без сложного namecall hook - увеличить хитбоксы врагов.
-CreateToggle("Silent Aim (Big Hitbox)", 270, function(val)
-    _G.AutoAim = val
+Library:CreateButton(Container, "ESP (Roles)", function(val)
+    State.ESP = val
     if not val then
-        -- Вернуть размер голов
         for _, p in pairs(Players:GetPlayers()) do
+            if p.Character and p.Character:FindFirstChild("MM2Highlight") then
+                p.Character.MM2Highlight:Destroy()
+            end
+        end
+    end
+end)
+
+Library:CreateButton(Container, "Auto Farm Coins (Legit)", function(val)
+    State.CoinFarm = val
+end)
+
+Library:CreateButton(Container, "Auto Shoot (Sheriff)", function(val)
+    State.AutoShoot = val
+end)
+
+Library:CreateButton(Container, "Auto Knife (Murderer)", function(val)
+    State.AutoKnife = val
+end)
+
+Library:CreateButton(Container, "Auto Grab Gun", function(val)
+    State.AutoGrab = val
+end)
+
+Library:CreateButton(Container, "Speed Boost (24)", function(val)
+    State.Speed = val
+end)
+
+Library:CreateButton(Container, "Silent Aim (Big Hitbox)", function(val)
+    State.AutoAim = val
+    if not val then
+         for _, p in pairs(Players:GetPlayers()) do
             if p.Character and p.Character:FindFirstChild("Head") then
-                p.Character.Head.Size = Vector3.new(2, 1, 1) -- Стандартный размер
+                p.Character.Head.Size = Vector3.new(1, 1, 1) -- MM2 standard head is 1,1,1 usually
                 p.Character.Head.Transparency = 0
                 p.Character.Head.CanCollide = true
             end
@@ -275,232 +231,195 @@ CreateToggle("Silent Aim (Big Hitbox)", 270, function(val)
     end
 end)
 
+-- // MAIN LOOPS //
+
+-- ESP Loop
 task.spawn(function()
     while task.wait(1) do
-        if _G.AutoAim then
-            local myRole = GetRole(LocalPlayer)
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChild("HumanoidRootPart") then
-                    local targetRole = GetRole(p)
-                    local shouldTarget = false
-                    
-                    -- Логика выбора цели
-                    if myRole == "Murderer" then
-                        -- Убийца целится в Шерифа или Невиновных
-                        if targetRole == "Sheriff" or targetRole == "Innocent" then shouldTarget = true end
-                    elseif myRole == "Sheriff" or myRole == "Innocent" then
-                        -- Шериф/Герой целится в Убийцу
-                        if targetRole == "Murderer" then shouldTarget = true end
-                    end
-                    
-                    if shouldTarget then
-                        p.Character.Head.Size = Vector3.new(15, 15, 15)
-                        p.Character.Head.Transparency = 0.5
-                        p.Character.Head.CanCollide = false -- Чтобы не застревать
-                    else
-                        -- Не цель - возвращаем размер
-                        p.Character.Head.Size = Vector3.new(2, 1, 1)
-                        p.Character.Head.Transparency = 0
-                    end
-                end
-            end
+        if State.ESP then
+            pcall(UpdateESP)
         end
     end
 end)
 
-CreateToggle("Auto Shoot (Sheriff)", 310, function(val)
-    _G.AutoShoot = val
-end)
--- Адаптация для мобильных устройств
-if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
-    MainFrame.Size = UDim2.new(0.5, 0, 0.6, 0) -- Меньше на телефоне
-    MainFrame.Position = UDim2.new(0.25, 0, 0.2, 0)
-    Title.TextSize = 14
-end
-
--- Исправленный Auto Shoot
+-- Speed Loop
 task.spawn(function()
     while task.wait() do
-        if _G.AutoShoot and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            local role = GetRole(LocalPlayer)
-            if role == "Sheriff" then
-                local gun = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Gun")
-                if gun then
-                    -- Авто-экипировка
-                    if gun.Parent == LocalPlayer.Backpack then
-                        LocalPlayer.Character.Humanoid:EquipTool(gun)
-                    end
-                    
-                    local target
-                    for _, p in pairs(Players:GetPlayers()) do
-                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChild("HumanoidRootPart") then
-                            local r = GetRole(p)
-                            if r == "Murderer" then
-                                target = p
-                                break
-                            end
-                        end
-                    end
-                    
-                    if target and target.Character and target.Character:FindFirstChild("Head") then
-                        local origin = LocalPlayer.Character.Head.Position
-                        local goal = target.Character.Head.Position
-                        local params = RaycastParams.new()
-                        params.FilterType = Enum.RaycastFilterType.Blacklist
-                        params.FilterDescendantsInstances = {LocalPlayer.Character}
-                        local result = Workspace:Raycast(origin, (goal - origin), params)
-                        local dist = (origin - goal).Magnitude
-                        
-                        -- Проверка видимости и дистанции
-                        if dist <= 200 and (not result or (result.Instance and result.Instance:IsDescendantOf(target.Character))) then
-                            -- Стрельба через VirtualUser для мобильных
-                            if UserInputService.TouchEnabled then
-                                VirtualUser:Button1Down(Vector2.new(0,0))
-                                task.wait(0.1)
-                                VirtualUser:Button1Up(Vector2.new(0,0))
-                            else
-                                gun:Activate()
-                            end
-                            task.wait(0.25)
-                        end
-                    end
-                end
-            end
+        if State.Speed and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = 24
         end
     end
 end)
 
-CreateToggle("Auto Knife (Murderer)", 355, function(val)
-    _G.AutoKnife = val
-end)
+-- Coin Farm Loop
 task.spawn(function()
     while task.wait() do
-        if _G.AutoKnife and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            local role = GetRole(LocalPlayer)
-            if role == "Murderer" then
-                local knife = LocalPlayer.Character:FindFirstChild("Knife") or LocalPlayer.Backpack:FindFirstChild("Knife")
-                if knife then
-                    if knife.Parent == LocalPlayer.Backpack and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                        LocalPlayer.Character.Humanoid:EquipTool(knife)
-                    end
-                    local target
-                    for _, p in pairs(Players:GetPlayers()) do
-                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                            local r = GetRole(p)
-                            if r == "Sheriff" then
-                                target = p
-                                break
-                            end
-                        end
-                    end
-                    if not target then
-                        local nearest
-                        local nd = math.huge
-                        for _, p in pairs(Players:GetPlayers()) do
-                            if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
-                                local d = (LocalPlayer.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
-                                if d < nd then
-                                    nd = d
-                                    nearest = p
-                                end
-                            end
-                        end
-                        target = nearest
-                    end
-                    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                        local d = (LocalPlayer.Character.HumanoidRootPart.Position - target.Character.HumanoidRootPart.Position).Magnitude
-                        if d <= 4 then
-                            knife:Activate()
-                            task.wait(0.2)
-                        elseif d <= 60 then
-                            knife:Activate()
-                            task.wait(0.4)
+        if State.CoinFarm and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local map = Workspace:FindFirstChild("Normal")
+            local coins = map and map:FindFirstChild("CoinContainer")
+            
+            if coins then
+                local nearest = nil
+                local minDst = math.huge
+                
+                for _, c in pairs(coins:GetChildren()) do
+                    if c.Name == "Coin_Server" and c.Transparency == 0 then
+                        local dst = (LocalPlayer.Character.HumanoidRootPart.Position - c.Position).Magnitude
+                        if dst < minDst then
+                            minDst = dst
+                            nearest = c
                         end
                     end
                 end
-            end
-        end
-    end
-end)
-
-CreateToggle("Auto Grab Gun", 400, function(val)
-    _G.AutoGrabGun = val
-end)
-task.spawn(function()
-    while task.wait() do
-        if _G.AutoGrabGun and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            local gd = Workspace:FindFirstChild("GunDrop")
-            if gd then
-                local humanoid = LocalPlayer.Character.Humanoid
-                local hrp = LocalPlayer.Character.HumanoidRootPart
-                local path = PathfindingService:CreatePath()
-                path:ComputeAsync(hrp.Position, gd.Position)
-                if path.Status == Enum.PathStatus.Success then
-                    for _, wp in ipairs(path:GetWaypoints()) do
-                        humanoid:MoveTo(wp.Position)
-                        humanoid.MoveToFinished:Wait()
-                        if not _G.AutoGrabGun then
+                
+                if nearest then
+                    local hum = LocalPlayer.Character.Humanoid
+                    -- Simple MoveTo
+                    hum:MoveTo(nearest.Position)
+                    -- Check if stuck
+                    local t = 0
+                    while t < 2 and nearest.Transparency == 0 and State.CoinFarm do
+                        task.wait(0.1)
+                        t = t + 0.1
+                        if (LocalPlayer.Character.HumanoidRootPart.Position - nearest.Position).Magnitude < 4 then
                             break
                         end
                     end
-                else
-                    humanoid:MoveTo(gd.Position)
-                    humanoid.MoveToFinished:Wait()
                 end
             end
         end
     end
 end)
 
-CreateToggle("Anti AFK", 445, function(val)
-    _G.AntiAFK = val
-end)
+-- Auto Shoot Loop
 task.spawn(function()
-    while task.wait(30) do
-        if _G.AntiAFK then
-            VirtualUser:CaptureController()
-            VirtualUser:ClickButton2(Vector2.new(0,0))
+    while task.wait(0.1) do
+        if State.AutoShoot and LocalPlayer.Character then
+            local myRole = GetRole(LocalPlayer)
+            if myRole == "Sheriff" then
+                local gun = LocalPlayer.Character:FindFirstChild("Gun") or LocalPlayer.Backpack:FindFirstChild("Gun")
+                
+                if gun then
+                    local target = nil
+                    for _, p in pairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer and GetRole(p) == "Murderer" then
+                            if p.Character and p.Character:FindFirstChild("Head") then
+                                target = p.Character.Head
+                            end
+                            break
+                        end
+                    end
+                    
+                    if target then
+                        -- Equip
+                        if gun.Parent == LocalPlayer.Backpack then
+                            LocalPlayer.Character.Humanoid:EquipTool(gun)
+                            task.wait(0.1)
+                        end
+                        
+                        -- Aim & Shoot
+                        local origin = LocalPlayer.Character.Head.Position
+                        local dir = (target.Position - origin).Unit * 200
+                        local ray = Ray.new(origin, dir)
+                        local hit, pos = Workspace:FindPartOnRayWithIgnoreList(ray, {LocalPlayer.Character})
+                        
+                        if hit and hit:IsDescendantOf(target.Parent) then
+                            -- Look at target
+                            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(LocalPlayer.Character.HumanoidRootPart.Position, Vector3.new(target.Position.X, LocalPlayer.Character.HumanoidRootPart.Position.Y, target.Position.Z))
+                            
+                            -- Shoot
+                            gun:Activate()
+                        end
+                    end
+                end
+            end
         end
     end
 end)
--- Кнопка закрытия и открытия
-local OpenBtn = Instance.new("TextButton")
-OpenBtn.Name = "OpenBtn"
-OpenBtn.Text = "OPEN GUI"
-OpenBtn.Size = UDim2.new(0, 100, 0, 40)
-OpenBtn.Position = UDim2.new(0, 10, 0.5, 0)
-OpenBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 0)
-OpenBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-OpenBtn.Font = Enum.Font.SourceSansBold
-OpenBtn.TextSize = 18
-OpenBtn.Visible = false
-OpenBtn.Parent = ScreenGui
 
-OpenBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = true
-    OpenBtn.Visible = false
-end)
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe then return end
-    if input.KeyCode == Enum.KeyCode.G then
-        MainFrame.Visible = not MainFrame.Visible
-        OpenBtn.Visible = not MainFrame.Visible
+-- Auto Knife Loop
+task.spawn(function()
+    while task.wait(0.1) do
+        if State.AutoKnife and LocalPlayer.Character then
+            local myRole = GetRole(LocalPlayer)
+            if myRole == "Murderer" then
+                local knife = LocalPlayer.Character:FindFirstChild("Knife") or LocalPlayer.Backpack:FindFirstChild("Knife")
+                
+                if knife then
+                    local target = nil
+                    local minDst = 15 -- Range
+                    
+                    for _, p in pairs(Players:GetPlayers()) do
+                        if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                            local dst = (LocalPlayer.Character.HumanoidRootPart.Position - p.Character.HumanoidRootPart.Position).Magnitude
+                            if dst < minDst then
+                                target = p.Character.HumanoidRootPart
+                                minDst = dst
+                            end
+                        end
+                    end
+                    
+                    if target then
+                         if knife.Parent == LocalPlayer.Backpack then
+                            LocalPlayer.Character.Humanoid:EquipTool(knife)
+                        end
+                        
+                        -- Chase
+                        LocalPlayer.Character.Humanoid:MoveTo(target.Position)
+                        
+                        if minDst < 5 then
+                            knife:Activate()
+                        end
+                    end
+                end
+            end
+        end
     end
 end)
 
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Text = "HIDE"
-CloseBtn.Size = UDim2.new(0.9, 0, 0, 40)
-CloseBtn.Position = UDim2.new(0.05, 0, 0, 420)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
-CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.Font = Enum.Font.SourceSansBold
-CloseBtn.TextSize = 18
-CloseBtn.Parent = MainFrame
-
-CloseBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false
-    OpenBtn.Visible = true
+-- Silent Aim Loop
+task.spawn(function()
+    while task.wait(0.5) do
+        if State.AutoAim then
+            local myRole = GetRole(LocalPlayer)
+            
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("Head") then
+                    local targetRole = GetRole(p)
+                    local isEnemy = false
+                    
+                    if myRole == "Murderer" then
+                        isEnemy = true
+                    elseif (myRole == "Sheriff" or myRole == "Innocent") and targetRole == "Murderer" then
+                        isEnemy = true
+                    end
+                    
+                    if isEnemy then
+                        p.Character.Head.Size = Vector3.new(10, 10, 10)
+                        p.Character.Head.Transparency = 0.7
+                        p.Character.Head.CanCollide = false
+                        p.Character.Head.Color = Color3.fromRGB(255, 0, 0)
+                    else
+                        p.Character.Head.Size = Vector3.new(1, 1, 1)
+                        p.Character.Head.Transparency = 0
+                        p.Character.Head.Color = Color3.fromRGB(255, 255, 255) -- Reset color might be tricky, usually skin color
+                    end
+                end
+            end
+        end
+    end
 end)
 
-print("MM2 Script Loaded!")
+-- Auto Grab Gun
+task.spawn(function()
+    while task.wait(0.5) do
+        if State.AutoGrab and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local gunDrop = Workspace:FindFirstChild("GunDrop")
+            if gunDrop then
+                 LocalPlayer.Character.Humanoid:MoveTo(gunDrop.Position)
+            end
+        end
+    end
+end)
+
+print("MM2 PRO v2 Loaded")
