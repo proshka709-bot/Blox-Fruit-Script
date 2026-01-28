@@ -152,12 +152,12 @@ local function CreateSwitch(text, defaultVal, callback)
     local btn = Instance.new("TextButton")
     btn.Parent = MainFrame
     btn.BackgroundColor3 = defaultVal and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
-    btn.Size = UDim2.new(0.9, 0, 0.12, 0)
-    btn.Position = UDim2.new(0.05, 0, 0.15 + ButtonCount * 0.14, 0)
+    btn.Size = UDim2.new(0.9, 0, 0.10, 0) -- Компактный размер
+    btn.Position = UDim2.new(0.05, 0, 0.15 + ButtonCount * 0.11, 0) -- Плотная расстановка
     btn.Text = text .. ": " .. (defaultVal and "ON" or "OFF")
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 16
+    btn.TextSize = 14
     btn.ZIndex = 103
     
     local corner = Instance.new("UICorner")
@@ -183,19 +183,20 @@ CreateSwitch("Server Fruit Hop", _G.ServerFruitHop, function(val) _G.ServerFruit
 CreateSwitch("Auto Stats (Melee)", _G.AutoStats, function(val) _G.AutoStats = val end)
 CreateSwitch("Hitbox Reach", _G.ReachAura, function(val) _G.ReachAura = val end)
 
--- Кнопка закрытия
+-- Кнопка закрытия (X)
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Parent = MainFrame
-CloseBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-CloseBtn.Size = UDim2.new(0.4, 0, 0.1, 0)
-CloseBtn.Position = UDim2.new(0.3, 0, 0.88, 0)
-CloseBtn.Text = "HIDE MENU"
+CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+CloseBtn.Size = UDim2.new(0.12, 0, 0.12, 0)
+CloseBtn.Position = UDim2.new(0.88, 0, 0, 0) -- Справа сверху
+CloseBtn.Text = "X"
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseBtn.Font = Enum.Font.SourceSansBold
-CloseBtn.ZIndex = 103
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 18
+CloseBtn.ZIndex = 105
 
 local UICornerClose = Instance.new("UICorner")
-UICornerClose.CornerRadius = UDim.new(0.2, 0)
+UICornerClose.CornerRadius = UDim.new(0.3, 0)
 UICornerClose.Parent = CloseBtn
 
 CloseBtn.Activated:Connect(function()
@@ -418,12 +419,21 @@ task.spawn(function()
                 -- 3. Атака
                 if target then
                     local weapon = EquipBest()
-                    -- Позиция атаки: сверху над мобом (чтобы не застревать в текстурах) и чуть сзади
-                    -- Y = 5 (высота), Z = 2 (дистанция)
-                    local targetPos = target.HumanoidRootPart.CFrame * CFrame.new(0, 5, 2)
                     
-                    Player.Character.HumanoidRootPart.CFrame = CFrame.new(targetPos.Position, target.HumanoidRootPart.Position) -- Смотрим на моба
-                    Player.Character.HumanoidRootPart.Velocity = Vector3.zero
+                    -- Применяем Hitbox Reach ТОЛЬКО к текущей цели (чтобы не было кучи)
+                    if _G.ReachAura and target:FindFirstChild("HumanoidRootPart") then
+                         target.HumanoidRootPart.Size = Vector3.new(50, 50, 50)
+                         target.HumanoidRootPart.Transparency = 0.8
+                         target.HumanoidRootPart.CanCollide = false
+                    end
+
+                    -- Позиция атаки: ГЛОБАЛЬНАЯ позиция над мобом
+                    -- Используем Vector3 для смещения, чтобы вращение моба не крутило нас
+                    local attackPos = target.HumanoidRootPart.Position + Vector3.new(0, 7, 0) -- Строго сверху (+7 блоков)
+                    
+                    -- Телепортация с взглядом на моба (LookAt)
+                    Player.Character.HumanoidRootPart.CFrame = CFrame.lookAt(attackPos, target.HumanoidRootPart.Position)
+                    Player.Character.HumanoidRootPart.Velocity = Vector3.zero -- Гасим инерцию
                     
                     if weapon then 
                         weapon:Activate()
@@ -521,35 +531,16 @@ RunService.Stepped:Connect(function()
     end
 end)
 
--- Hitbox Expander (Reach Aura)
+-- Hitbox Expander (Reach Aura) - Глобальный цикл удален, теперь применяется точечно к цели
+--[[
 task.spawn(function()
     while task.wait(0.5) do
         if _G.ReachAura then
-            pcall(function()
-                local enemies = Workspace:FindFirstChild("Enemies")
-                if enemies then
-                    for _, v in pairs(enemies:GetChildren()) do
-                        if v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") and v.Humanoid.Health > 0 then
-                            v.HumanoidRootPart.Size = Vector3.new(60, 60, 60)
-                            v.HumanoidRootPart.Transparency = 0.8
-                            v.HumanoidRootPart.CanCollide = false
-                            -- Фикс: также увеличиваем зону коллизии, чтобы клики проходили
-                            for _, part in pairs(v:GetChildren()) do
-                                if part:IsA("BasePart") then
-                                    part.CanCollide = false
-                                end
-                            end
-                            -- Принудительно устанавливаем позицию HRP (иногда сбивается)
-                            if v:FindFirstChild("Head") then
-                                v.HumanoidRootPart.CFrame = v.Head.CFrame
-                            end
-                        end
-                    end
-                end
-            end)
+             -- Логика перенесена в AutoFarm цикл для предотвращения лагов и "кучи"
         end
     end
 end)
+]]
 
 -- // SERVER FRUIT HOP (Сервер Хоп) //
 local function ServerHop()
