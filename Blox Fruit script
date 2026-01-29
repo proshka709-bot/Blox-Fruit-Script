@@ -1,16 +1,17 @@
 --[[
-    Erafox: Universal Scanner v5.0 (Explorer Edition)
-    Улучшения:
-    1. Вкладка EXPLORER: Полноценный файловый менеджер для всей игры!
-    2. Глобальное сканирование: Проверяет ВСЕ сервисы (Lighting, Teams, SoundService и т.д.)
-    3. Умная навигация: Можно заходить в папки и возвращаться назад
-    4. Максимальная защита: Не крашится при попытке открыть закрытые сервисы
+    Erafox: Universal Scanner v5.1 (Fix Edition)
+    Исправления:
+    1. Исправлена проблема с появлением меню (поддержка всех экзекуторов)
+    2. Авто-определение интерфейса (gethui / PlayerGui / CoreGui)
+    3. Адаптивный размер для всех экранов
 ]]
+
+print("Erafox Scanner: Starting...")
 
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
-local LocalPlayer = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
 -- // НАСТРОЙКИ //
 local Config = {
@@ -23,34 +24,71 @@ local Config = {
         Folder = Color3.fromRGB(255, 200, 100),
         Object = Color3.fromRGB(200, 200, 200)
     },
-    IsMobile = UserInputService.TouchEnabled and not UserInputService.MouseEnabled
+    IsMobile = UserInputService.TouchEnabled -- Упрощенная проверка
 }
 
 -- // UI БИБЛИОТЕКА //
 local UI = {}
+
+-- 1. БЕЗОПАСНОЕ СОЗДАНИЕ GUI
+local function GetGuiParent()
+    -- Попытка использовать gethui (стандарт для современных экзекуторов)
+    if gethui then 
+        return gethui() 
+    end
+    -- Попытка CoreGui (если есть права)
+    local success, _ = pcall(function() return CoreGui end)
+    if success then 
+        return CoreGui 
+    end
+    -- Фолбэк на PlayerGui
+    return LocalPlayer:WaitForChild("PlayerGui")
+end
+
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "ErafoxExplorer"
+ScreenGui.Name = "ErafoxExplorer_v5_1"
 ScreenGui.ResetOnSpawn = false
-pcall(function() ScreenGui.Parent = CoreGui end)
-if not ScreenGui.Parent then ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = GetGuiParent()
+
+print("Erafox Scanner: GUI Parent set to", ScreenGui.Parent)
 
 function UI.MakeDraggable(frame, handle)
     handle = handle or frame
     local dragging, dragInput, dragStart, startPos
+    
     local function update(input)
         local delta = input.Position - dragStart
         frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
     end
+    
     handle.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true; dragStart = input.Position; startPos = frame.Position
-            input.Changed:Connect(function() if input.UserInputState == Enum.UserInputState.End then dragging = false end end)
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            
+            local con
+            con = input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    con:Disconnect()
+                end
+            end)
         end
     end)
+    
     handle.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
     end)
-    UserInputService.InputChanged:Connect(function(input) if input == dragInput and dragging then update(input) end end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            update(input)
+        end
+    end)
 end
 
 function UI.Create(className, props, children)
@@ -61,57 +99,137 @@ function UI.Create(className, props, children)
 end
 
 -- // ГЛАВНОЕ ОКНО //
+-- Используем Scale для универсальности (50% экрана на ПК, 90% на мобилках)
+local winSize = Config.IsMobile and UDim2.new(0.9, 0, 0.8, 0) or UDim2.new(0.5, 0, 0.6, 0)
+local winPos = UDim2.new(0.5, 0, 0.5, 0)
+
 local MainWindow = UI.Create("Frame", {
     Name = "MainWindow",
-    Size = Config.IsMobile and UDim2.new(0.95, 0, 0.9, 0) or UDim2.new(0, 700, 0, 600),
-    Position = UDim2.new(0.5, 0, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
-    BackgroundColor3 = Config.Theme.Main, Visible = false, Parent = ScreenGui
+    Size = winSize,
+    Position = winPos,
+    AnchorPoint = Vector2.new(0.5, 0.5),
+    BackgroundColor3 = Config.Theme.Main,
+    Visible = false,
+    Parent = ScreenGui,
+    ClipsDescendants = true
 }, {UI.Create("UICorner", {CornerRadius = UDim.new(0, 10)})})
 
 local Header = UI.Create("Frame", {
-    Size = UDim2.new(1, 0, 0, 45), BackgroundColor3 = Config.Theme.Header, Parent = MainWindow
+    Size = UDim2.new(1, 0, 0, 45),
+    BackgroundColor3 = Config.Theme.Header,
+    Parent = MainWindow
 }, {
     UI.Create("UICorner", {CornerRadius = UDim.new(0, 10)}),
     UI.Create("TextLabel", {
-        Text = " 🦊 Erafox Explorer v5.0", Size = UDim2.new(0.8, 0, 1, 0), Position = UDim2.new(0, 10, 0, 0),
-        BackgroundTransparency = 1, TextColor3 = Config.Theme.Accent, Font = Enum.Font.GothamBold, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Left
+        Text = " 🦊 Erafox Explorer v5.1",
+        Size = UDim2.new(0.8, 0, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        TextColor3 = Config.Theme.Accent,
+        Font = Enum.Font.GothamBold,
+        TextSize = 18,
+        TextXAlignment = Enum.TextXAlignment.Left
     }),
     UI.Create("TextButton", {
-        Name = "CloseBtn", Text = "X", Size = UDim2.new(0, 45, 1, 0), Position = UDim2.new(1, -45, 0, 0),
-        BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(255, 100, 100), Font = Enum.Font.GothamBold, TextSize = 18
+        Name = "CloseBtn",
+        Text = "X",
+        Size = UDim2.new(0, 45, 1, 0),
+        Position = UDim2.new(1, -45, 0, 0),
+        BackgroundTransparency = 1,
+        TextColor3 = Color3.fromRGB(255, 100, 100),
+        Font = Enum.Font.GothamBold,
+        TextSize = 18
     })
 })
 UI.MakeDraggable(MainWindow, Header)
 
+-- КНОПКА ОТКРЫТИЯ
 local OpenBtn = UI.Create("TextButton", {
-    Name = "ErafoxOpen", Text = "📂", Size = UDim2.new(0, 50, 0, 50), Position = UDim2.new(0, 20, 0.4, 0),
-    BackgroundColor3 = Config.Theme.Main, TextColor3 = Config.Theme.Accent, TextSize = 24, Parent = ScreenGui
-}, {UI.Create("UICorner", {CornerRadius = UDim.new(1, 0)}), UI.Create("UIStroke", {Color = Config.Theme.Accent, Thickness = 2})})
+    Name = "ErafoxOpen",
+    Text = "🦊",
+    Size = UDim2.new(0, 60, 0, 60), -- Чуть больше для удобства
+    Position = UDim2.new(0, 20, 0.4, 0),
+    BackgroundColor3 = Config.Theme.Main,
+    TextColor3 = Config.Theme.Accent,
+    TextSize = 30,
+    Parent = ScreenGui,
+    ZIndex = 100 -- Поверх всего
+}, {
+    UI.Create("UICorner", {CornerRadius = UDim.new(1, 0)}),
+    UI.Create("UIStroke", {Color = Config.Theme.Accent, Thickness = 2})
+})
 UI.MakeDraggable(OpenBtn)
 
-OpenBtn.MouseButton1Click:Connect(function() MainWindow.Visible = true; OpenBtn.Visible = false end)
-Header.CloseBtn.MouseButton1Click:Connect(function() MainWindow.Visible = false; OpenBtn.Visible = true end)
+OpenBtn.MouseButton1Click:Connect(function()
+    MainWindow.Visible = true
+    OpenBtn.Visible = false
+end)
+
+Header.CloseBtn.MouseButton1Click:Connect(function()
+    MainWindow.Visible = false
+    OpenBtn.Visible = true
+end)
 
 -- // ТАБЫ //
-local TabContainer = UI.Create("Frame", {Size = UDim2.new(1, 0, 0, 40), Position = UDim2.new(0, 0, 0, 45), BackgroundColor3 = Config.Theme.Header, Parent = MainWindow})
-local ContentContainer = UI.Create("Frame", {Size = UDim2.new(1, 0, 1, -95), Position = UDim2.new(0, 0, 0, 85), BackgroundTransparency = 1, Parent = MainWindow})
+local TabContainer = UI.Create("Frame", {
+    Size = UDim2.new(1, 0, 0, 40),
+    Position = UDim2.new(0, 0, 0, 45),
+    BackgroundColor3 = Config.Theme.Header,
+    Parent = MainWindow
+})
+
+local ContentContainer = UI.Create("Frame", {
+    Size = UDim2.new(1, 0, 1, -95),
+    Position = UDim2.new(0, 0, 0, 85),
+    BackgroundTransparency = 1,
+    Parent = MainWindow
+})
+
 local currentTab = nil
 
 function CreateTab(name, icon)
     local tabBtn = UI.Create("TextButton", {
-        Text = icon .. " " .. name, Size = UDim2.new(0.2, 0, 1, 0), BackgroundTransparency = 1,
-        TextColor3 = Config.Theme.Text, Font = Enum.Font.GothamMedium, TextSize = 14, Parent = TabContainer
+        Text = icon .. " " .. name,
+        Size = UDim2.new(0.2, 0, 1, 0),
+        BackgroundTransparency = 1,
+        TextColor3 = Config.Theme.Text,
+        Font = Enum.Font.GothamMedium,
+        TextSize = 14,
+        Parent = TabContainer
     })
+    
     local tabContent = UI.Create("ScrollingFrame", {
-        Size = UDim2.new(1, -20, 1, -10), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, Visible = false, Parent = ContentContainer, ScrollBarThickness = 4
+        Size = UDim2.new(1, -20, 1, -10),
+        Position = UDim2.new(0, 10, 0, 5),
+        BackgroundTransparency = 1,
+        Visible = false,
+        Parent = ContentContainer,
+        ScrollBarThickness = 4,
+        AutomaticCanvasSize = Enum.AutomaticSize.Y
     })
-    UI.Create("UIListLayout", {Parent = tabContent, Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder})
+    
+    UI.Create("UIListLayout", {
+        Parent = tabContent,
+        Padding = UDim.new(0, 5),
+        SortOrder = Enum.SortOrder.LayoutOrder
+    })
     
     tabBtn.MouseButton1Click:Connect(function()
-        if currentTab then currentTab.Btn.TextColor3 = Config.Theme.Text; currentTab.Content.Visible = false end
-        currentTab = {Btn = tabBtn, Content = tabContent}; tabBtn.TextColor3 = Config.Theme.Accent; tabContent.Visible = true
+        if currentTab then
+            currentTab.Btn.TextColor3 = Config.Theme.Text
+            currentTab.Content.Visible = false
+        end
+        currentTab = {Btn = tabBtn, Content = tabContent}
+        tabBtn.TextColor3 = Config.Theme.Accent
+        tabContent.Visible = true
     end)
-    if not currentTab then currentTab = {Btn = tabBtn, Content = tabContent}; tabBtn.TextColor3 = Config.Theme.Accent; tabContent.Visible = true end
+    
+    if not currentTab then
+        currentTab = {Btn = tabBtn, Content = tabContent}
+        tabBtn.TextColor3 = Config.Theme.Accent
+        tabContent.Visible = true
+    end
+    
     return tabContent
 end
 
@@ -123,25 +241,68 @@ local TabInfo = CreateTab("Info", "ℹ️")
 
 -- // HELPER FUNCTIONS //
 function CopyToClipboard(str)
-    if setclipboard then setclipboard(str) else print("Copied:", str) end
+    if setclipboard then
+        setclipboard(str)
+        -- Визуальный фидбек можно добавить сюда
+    else
+        print("Copied:", str)
+    end
 end
 
 function SafeGetChildren(obj)
     local children = {}
-    pcall(function() children = obj:GetChildren() end)
+    local success = pcall(function()
+        children = obj:GetChildren()
+    end)
     return children
 end
 
 function CreateListItem(parent, title, desc, color, actionText, actionFunc)
-    local item = UI.Create("Frame", {Size = UDim2.new(1, 0, 0, 50), BackgroundColor3 = Color3.fromRGB(30, 30, 40), Parent = parent}, {
+    local item = UI.Create("Frame", {
+        Size = UDim2.new(1, 0, 0, 50),
+        BackgroundColor3 = Color3.fromRGB(30, 30, 40),
+        Parent = parent
+    }, {
         UI.Create("UICorner", {CornerRadius = UDim.new(0, 6)}),
-        UI.Create("TextLabel", {Text = title, Size = UDim2.new(0.6, 0, 0.5, 0), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, TextColor3 = color or Config.Theme.Text, Font = Enum.Font.GothamBold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd}),
-        UI.Create("TextLabel", {Text = desc, Size = UDim2.new(0.6, 0, 0.4, 0), Position = UDim2.new(0, 10, 0.5, 0), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(150, 150, 150), Font = Enum.Font.Gotham, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd})
+        UI.Create("TextLabel", {
+            Text = title,
+            Size = UDim2.new(0.6, 0, 0.5, 0),
+            Position = UDim2.new(0, 10, 0, 5),
+            BackgroundTransparency = 1,
+            TextColor3 = color or Config.Theme.Text,
+            Font = Enum.Font.GothamBold,
+            TextSize = 14,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd
+        }),
+        UI.Create("TextLabel", {
+            Text = desc,
+            Size = UDim2.new(0.6, 0, 0.4, 0),
+            Position = UDim2.new(0, 10, 0.5, 0),
+            BackgroundTransparency = 1,
+            TextColor3 = Color3.fromRGB(150, 150, 150),
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextTruncate = Enum.TextTruncate.AtEnd
+        })
     })
+    
     if actionText then
-        local btn = UI.Create("TextButton", {Text = actionText, Size = UDim2.new(0, 80, 0, 30), Position = UDim2.new(1, -90, 0.5, -15), BackgroundColor3 = Config.Theme.Accent, TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBold, TextSize = 12, Parent = item}, {UI.Create("UICorner", {CornerRadius = UDim.new(0, 4)})})
+        local btn = UI.Create("TextButton", {
+            Text = actionText,
+            Size = UDim2.new(0, 80, 0, 30),
+            Position = UDim2.new(1, -90, 0.5, -15),
+            BackgroundColor3 = Config.Theme.Accent,
+            TextColor3 = Color3.new(1,1,1),
+            Font = Enum.Font.GothamBold,
+            TextSize = 12,
+            Parent = item
+        }, {UI.Create("UICorner", {CornerRadius = UDim.new(0, 4)})})
+        
         btn.MouseButton1Click:Connect(actionFunc)
     end
+    
     return item
 end
 
@@ -154,20 +315,40 @@ function RefreshExplorer()
     UI.Create("UIListLayout", {Parent = TabExplorer, Padding = UDim.new(0, 5)})
     
     -- Navigation Header
-    local NavFrame = UI.Create("Frame", {Size = UDim2.new(1, 0, 0, 40), BackgroundTransparency = 1, Parent = TabExplorer})
+    local NavFrame = UI.Create("Frame", {
+        Size = UDim2.new(1, 0, 0, 40),
+        BackgroundTransparency = 1,
+        Parent = TabExplorer,
+        LayoutOrder = -1 -- Always top
+    })
     
     if #History > 0 then
-        UI.Create("TextButton", {
-            Text = "⬅ BACK", Size = UDim2.new(0, 80, 1, 0), BackgroundColor3 = Config.Theme.Header, TextColor3 = Config.Theme.Accent, Font = Enum.Font.GothamBold, TextSize = 14, Parent = NavFrame
-        }, {UI.Create("UICorner", {CornerRadius = UDim.new(0, 8)})}).MouseButton1Click:Connect(function()
+        local backBtn = UI.Create("TextButton", {
+            Text = "⬅ BACK",
+            Size = UDim2.new(0, 80, 1, 0),
+            BackgroundColor3 = Config.Theme.Header,
+            TextColor3 = Config.Theme.Accent,
+            Font = Enum.Font.GothamBold,
+            TextSize = 14,
+            Parent = NavFrame
+        }, {UI.Create("UICorner", {CornerRadius = UDim.new(0, 8)})})
+        
+        backBtn.MouseButton1Click:Connect(function()
             CurrentFolder = table.remove(History)
             RefreshExplorer()
         end)
     end
     
     UI.Create("TextLabel", {
-        Text = CurrentFolder == game and "GAME" or CurrentFolder.Name, Size = UDim2.new(1, -90, 1, 0), Position = UDim2.new(0, 90, 0, 0),
-        BackgroundTransparency = 1, TextColor3 = Config.Theme.Text, Font = Enum.Font.GothamBold, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Left, Parent = NavFrame
+        Text = CurrentFolder == game and "GAME" or CurrentFolder.Name,
+        Size = UDim2.new(1, -90, 1, 0),
+        Position = UDim2.new(0, 90, 0, 0),
+        BackgroundTransparency = 1,
+        TextColor3 = Config.Theme.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 16,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = NavFrame
     })
 
     -- List Children
@@ -185,15 +366,22 @@ function RefreshExplorer()
             RefreshExplorer()
         end)
         
-        -- Add Copy Path button (Small)
+        -- Add Copy Path button
         local copyBtn = UI.Create("TextButton", {
-            Text = "COPY", Size = UDim2.new(0, 50, 0, 20), Position = UDim2.new(1, -150, 0.5, -10),
-            BackgroundColor3 = Color3.fromRGB(50, 50, 60), TextColor3 = Color3.new(1,1,1), Font = Enum.Font.Gotham, TextSize = 10, Parent = item
+            Text = "COPY",
+            Size = UDim2.new(0, 50, 0, 20),
+            Position = UDim2.new(1, -150, 0.5, -10),
+            BackgroundColor3 = Color3.fromRGB(50, 50, 60),
+            TextColor3 = Color3.new(1,1,1),
+            Font = Enum.Font.Gotham,
+            TextSize = 10,
+            Parent = item
         }, {UI.Create("UICorner", {CornerRadius = UDim.new(0, 4)})})
-        copyBtn.MouseButton1Click:Connect(function() CopyToClipboard("game." .. obj:GetFullName()) end)
+        
+        copyBtn.MouseButton1Click:Connect(function()
+            CopyToClipboard("game." .. obj:GetFullName())
+        end)
     end
-    
-    TabExplorer.CanvasSize = UDim2.new(0, 0, 0, (#children + 1) * 55)
 end
 
 -- // 2. GLOBAL SCANNER //
@@ -208,15 +396,18 @@ function GetAllServices()
 end
 
 function RefreshRemotes()
-    TabRemotes:ClearAllChildren(); UI.Create("UIListLayout", {Parent = TabRemotes, Padding = UDim.new(0, 5)})
-    local count = 0
+    TabRemotes:ClearAllChildren()
+    UI.Create("UIListLayout", {Parent = TabRemotes, Padding = UDim.new(0, 5)})
     
+    local count = 0
     local function scan(parent)
         for _, obj in pairs(SafeGetChildren(parent)) do
             if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
                 count = count + 1
                 if count < 150 then 
-                    CreateListItem(TabRemotes, obj.Name, obj:GetFullName(), Config.Theme.Accent, "COPY", function() CopyToClipboard("game."..obj:GetFullName()) end) 
+                    CreateListItem(TabRemotes, obj.Name, obj:GetFullName(), Config.Theme.Accent, "COPY", function()
+                        CopyToClipboard("game."..obj:GetFullName())
+                    end) 
                 end
             elseif obj:IsA("Folder") or obj:IsA("Model") or obj:IsA("ReplicatedStorage") or obj:IsA("StarterGui") then
                 scan(obj)
@@ -227,52 +418,73 @@ function RefreshRemotes()
     for _, service in pairs(GetAllServices()) do
         pcall(function() scan(service) end)
     end
-    TabRemotes.CanvasSize = UDim2.new(0, 0, 0, count * 55)
 end
 
 function RefreshWorld()
-    TabWorld:ClearAllChildren(); UI.Create("UIListLayout", {Parent = TabWorld, Padding = UDim.new(0, 5)})
-    local count = 0
+    TabWorld:ClearAllChildren()
+    UI.Create("UIListLayout", {Parent = TabWorld, Padding = UDim.new(0, 5)})
     
+    local count = 0
     local function scan(parent)
         for _, obj in pairs(SafeGetChildren(parent)) do
             if count > 100 then return end
             
             local interesting = false
-            if obj:IsA("BasePart") and (obj:FindFirstChild("TouchInterest") or obj.Name:lower():find("teleport") or obj.Name:lower():find("spawn")) then interesting = true end
+            if obj:IsA("BasePart") and (obj:FindFirstChild("TouchInterest") or obj.Name:lower():find("teleport") or obj.Name:lower():find("spawn")) then
+                interesting = true
+            end
             if obj:IsA("Tool") then interesting = true end
             
             if interesting then
                 count = count + 1
                 CreateListItem(TabWorld, obj.Name, obj.ClassName, Config.Theme.Success, "TP TO", function() 
-                    if LocalPlayer.Character and obj:IsA("BasePart") then LocalPlayer.Character.HumanoidRootPart.CFrame = obj.CFrame 
-                    elseif obj:IsA("Tool") and obj.Handle then LocalPlayer.Character.HumanoidRootPart.CFrame = obj.Handle.CFrame end 
+                    if LocalPlayer.Character and obj:IsA("BasePart") then
+                        LocalPlayer.Character.HumanoidRootPart.CFrame = obj.CFrame 
+                    elseif obj:IsA("Tool") and obj.Handle then
+                        LocalPlayer.Character.HumanoidRootPart.CFrame = obj.Handle.CFrame
+                    end 
                 end)
             end
             
-            -- Recursion for folders/models
             if obj:IsA("Folder") or obj:IsA("Model") then scan(obj) end
         end
     end
     
-    -- Mainly scan Workspace, but also Lighting/Replicated for items
     scan(game.Workspace)
-    scan(game.Lighting)
-    
-    TabWorld.CanvasSize = UDim2.new(0, 0, 0, count * 55)
+    pcall(function() scan(game.Lighting) end)
 end
 
 function RefreshPlayers()
-    TabPlayers:ClearAllChildren(); UI.Create("UIListLayout", {Parent = TabPlayers, Padding = UDim.new(0, 5)})
+    TabPlayers:ClearAllChildren()
+    UI.Create("UIListLayout", {Parent = TabPlayers, Padding = UDim.new(0, 5)})
+    
     for _, p in pairs(Players:GetPlayers()) do
         local info = (p.Character and p.Character:FindFirstChild("Humanoid")) and "HP: "..math.floor(p.Character.Humanoid.Health) or "HP: ?"
-        CreateListItem(TabPlayers, p.DisplayName, info, Config.Theme.Text, "GOTO", function() if LocalPlayer.Character and p.Character then LocalPlayer.Character.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame end end)
+        CreateListItem(TabPlayers, p.DisplayName, info, Config.Theme.Text, "GOTO", function()
+            if LocalPlayer.Character and p.Character then
+                LocalPlayer.Character.HumanoidRootPart.CFrame = p.Character.HumanoidRootPart.CFrame
+            end
+        end)
     end
-    TabPlayers.CanvasSize = UDim2.new(0, 0, 0, #Players:GetPlayers() * 55)
 end
 
 -- Refresh Button
-UI.Create("TextButton", {Text = "🔄 REFRESH ALL", Size = UDim2.new(1, 0, 0, 50), BackgroundColor3 = Config.Theme.Success, TextColor3 = Color3.new(1,1,1), Font = Enum.Font.GothamBold, TextSize = 18, Parent = TabInfo}, {UI.Create("UICorner", {CornerRadius = UDim.new(0, 8)})}).MouseButton1Click:Connect(function() RefreshExplorer(); RefreshRemotes(); RefreshPlayers(); RefreshWorld() end)
+local refreshBtn = UI.Create("TextButton", {
+    Text = "🔄 REFRESH ALL",
+    Size = UDim2.new(1, 0, 0, 50),
+    BackgroundColor3 = Config.Theme.Success,
+    TextColor3 = Color3.new(1,1,1),
+    Font = Enum.Font.GothamBold,
+    TextSize = 18,
+    Parent = TabInfo
+}, {UI.Create("UICorner", {CornerRadius = UDim.new(0, 8)})})
+
+refreshBtn.MouseButton1Click:Connect(function()
+    RefreshExplorer()
+    RefreshRemotes()
+    RefreshPlayers()
+    RefreshWorld()
+end)
 
 -- Initial Load
 RefreshExplorer()
@@ -280,4 +492,4 @@ RefreshRemotes()
 RefreshPlayers()
 RefreshWorld()
 
-print("Erafox Universal Scanner v5.0 Loaded")
+print("Erafox Universal Scanner v5.1 Loaded Successfully")
