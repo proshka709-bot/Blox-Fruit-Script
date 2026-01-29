@@ -1,258 +1,685 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
 local VirtualUser = game:GetService("VirtualUser")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local TeleportService = game:GetService("TeleportService")
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
 
-local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
+local Player = Players.LocalPlayer
+local Mouse = Player:GetMouse()
 
--- // SETTINGS //
-local Settings = {
-    AutoParry = true,
-    Visuals = true,
-    AutoAbility = false, -- Авто-способности
-    Range = 25, -- Дистанция для парирования
-    CurveAdjust = 1.2, -- Поправка на скорость
-    Debug = false
+-- // VERSION //
+_G.ScriptVersion = "v1.1" -- Updated Version
+
+-- // GLOBAL SETTINGS //
+_G.Settings = {
+    AutoFarm = false,
+    AutoQuest = false,
+    FruitESP = false,
+    AutoCollectFruit = false,
+    ServerFruitHop = false,
+    ReachAura = true,
+    AutoStats = false,
+    AttackDist = 3,
+    MobileAttackOnly = true,
+    AutoHaki = true,
+    ChestESP = false,
+    SpeedBoost = false,
+    WalkOnWater = false,
+    InfGeppo = false,
+    SelectStat = "Melee",
+    AutoBuyRandomFruit = false,
+    SmartAI = false,
+    AutoPvP = false,
+    AimBot = false,
+    PlayerESP = false,
+    AutoFarmChests = false,
+    FPSBoost = false,
+    AutoElite = false,
+    Invisibility = false
+}
+
+-- Backward compatibility
+for k, v in pairs(_G.Settings) do _G[k] = v end
+setmetatable(_G, {
+    __newindex = function(t, k, v)
+        if _G.Settings[k] ~= nil then
+            _G.Settings[k] = v
+        end
+        rawset(t, k, v)
+    end
+})
+
+-- // STATE MANAGEMENT //
+local State = {
+    CurrentTarget = nil,
+    IslandCache = {},
+    LastChestScan = 0,
+    Chests = {},
+    Fruits = {},
+    ActiveTweens = {},
+    IsTweening = false
+}
+
+local FruitSpawnData = {
+    LastSeenFruits = {},
+    SpawnTimes = {},
+    AverageSpawnTime = 3600,
+    LastDespawnTime = 0
 }
 
 -- // UI SETUP //
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "PhantomBallHub"
-ScreenGui.Parent = game.CoreGui or LocalPlayer:WaitForChild("PlayerGui")
-ScreenGui.ResetOnSpawn = false
+local function CreateUI()
+    local oldGui = Player:WaitForChild("PlayerGui"):FindFirstChild("BloxFruitMobileGUI_v4")
+    if oldGui then oldGui:Destroy() end
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 220, 0, 160)
-MainFrame.Position = UDim2.new(0.1, 0, 0.2, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-MainFrame.BorderSizePixel = 0
-MainFrame.Parent = ScreenGui
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "BloxFruitMobileGUI_v4"
+    ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.DisplayOrder = 1000
+    ScreenGui.IgnoreGuiInset = true
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = MainFrame
-
-local Title = Instance.new("TextLabel")
-Title.Text = "Phantom Ball Hub"
-Title.Size = UDim2.new(1, 0, 0, 30)
-Title.BackgroundTransparency = 1
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.GothamBold
-Title.TextSize = 16
-Title.Parent = MainFrame
-
--- Draggable Logic
-local dragging, dragInput, dragStart, startPos
-local function update(input)
-    local delta = input.Position - dragStart
-    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
-MainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
-    end
-end)
-MainFrame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then update(input) end
-end)
-
--- Toggle Button
-local ToggleBtn = Instance.new("TextButton")
-ToggleBtn.Size = UDim2.new(0.9, 0, 0, 35)
-ToggleBtn.Position = UDim2.new(0.05, 0, 0.3, 0)
-ToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-ToggleBtn.Text = "Auto Parry: ON"
-ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ToggleBtn.Font = Enum.Font.GothamSemibold
-ToggleBtn.TextSize = 14
-ToggleBtn.Parent = MainFrame
-Instance.new("UICorner", ToggleBtn).CornerRadius = UDim.new(0, 6)
-
-ToggleBtn.MouseButton1Click:Connect(function()
-    Settings.AutoParry = not Settings.AutoParry
-    ToggleBtn.Text = "Auto Parry: " .. (Settings.AutoParry and "ON" or "OFF")
-    ToggleBtn.BackgroundColor3 = Settings.AutoParry and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 50, 50)
-end)
-
--- Visuals Toggle
-local VizBtn = Instance.new("TextButton")
-VizBtn.Size = UDim2.new(0.9, 0, 0, 35)
-VizBtn.Position = UDim2.new(0.05, 0, 0.55, 0) -- Чуть выше
-VizBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
-VizBtn.Text = "Visuals: ON"
-VizBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-VizBtn.Font = Enum.Font.GothamSemibold
-VizBtn.TextSize = 14
-VizBtn.Parent = MainFrame
-Instance.new("UICorner", VizBtn).CornerRadius = UDim.new(0, 6)
-
-VizBtn.MouseButton1Click:Connect(function()
-    Settings.Visuals = not Settings.Visuals
-    VizBtn.Text = "Visuals: " .. (Settings.Visuals and "ON" or "OFF")
-end)
-
--- Auto Ability Toggle
-local AbilityBtn = Instance.new("TextButton")
-AbilityBtn.Size = UDim2.new(0.9, 0, 0, 35)
-AbilityBtn.Position = UDim2.new(0.05, 0, 0.8, 0)
-AbilityBtn.BackgroundColor3 = Color3.fromRGB(200, 150, 50)
-AbilityBtn.Text = "Auto Ability: OFF"
-AbilityBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-AbilityBtn.Font = Enum.Font.GothamSemibold
-AbilityBtn.TextSize = 14
-AbilityBtn.Parent = MainFrame
-Instance.new("UICorner", AbilityBtn).CornerRadius = UDim.new(0, 6)
-
-AbilityBtn.MouseButton1Click:Connect(function()
-    Settings.AutoAbility = not Settings.AutoAbility
-    AbilityBtn.Text = "Auto Ability: " .. (Settings.AutoAbility and "ON" or "OFF")
-    AbilityBtn.BackgroundColor3 = Settings.AutoAbility and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 150, 50)
-end)
-
--- Increase Frame Size for new button
-MainFrame.Size = UDim2.new(0, 220, 0, 210)
-
--- // LOGIC //
-
--- Visualizer Part
-local VizPart = Instance.new("Part")
-VizPart.Anchored = true
-VizPart.CanCollide = false
-VizPart.Material = Enum.Material.ForceField
-VizPart.Shape = Enum.PartType.Ball
-VizPart.Color = Color3.fromRGB(255, 0, 0)
-VizPart.Transparency = 0.8
-VizPart.Size = Vector3.new(Settings.Range, Settings.Range, Settings.Range)
-VizPart.Parent = Workspace
-
-local function GetBall()
-    -- Попытка найти мяч. Обычно он называется "Ball" или находится в папке Balls
-    -- Адаптируйте под конкретную игру, если название отличается
-    local ball = Workspace:FindFirstChild("Ball") or Workspace:FindFirstChild("ClassicBall")
+    -- Toggle Button
+    local ToggleBtn = Instance.new("TextButton")
+    ToggleBtn.Name = "ToggleBtn"
+    ToggleBtn.Parent = ScreenGui
+    ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+    ToggleBtn.Position = UDim2.new(0, 50, 0.3, 0) 
+    ToggleBtn.Size = UDim2.new(0, 60, 0, 60)
+    ToggleBtn.Font = Enum.Font.SourceSansBold
+    ToggleBtn.Text = "MENU"
+    ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    ToggleBtn.TextSize = 16
+    ToggleBtn.ZIndex = 100
     
-    if not ball then
-        -- Поиск по тегам или внутри папок
-        for _, v in pairs(Workspace:GetDescendants()) do
-            if v.Name == "Ball" and v:IsA("BasePart") then
-                return v
+    local UICornerBtn = Instance.new("UICorner")
+    UICornerBtn.CornerRadius = UDim.new(0.5, 0)
+    UICornerBtn.Parent = ToggleBtn
+
+    -- Main Frame
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Parent = ScreenGui
+    MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    MainFrame.Size = UDim2.new(0.5, 0, 0.65, 0)
+    MainFrame.Visible = false
+    MainFrame.ZIndex = 101
+    
+    local UICornerFrame = Instance.new("UICorner")
+    UICornerFrame.CornerRadius = UDim.new(0.05, 0)
+    UICornerFrame.Parent = MainFrame
+
+    -- Title
+    local Title = Instance.new("TextLabel")
+    Title.Parent = MainFrame
+    Title.Text = "BLOX FRUITS OPTIMIZED v4.0"
+    Title.Size = UDim2.new(1, 0, 0.12, 0)
+    Title.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
+    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Title.Font = Enum.Font.SourceSansBold
+    Title.TextSize = 18
+    Title.ZIndex = 102
+    
+    local UICornerTitle = Instance.new("UICorner")
+    UICornerTitle.CornerRadius = UDim.new(0.1, 0)
+    UICornerTitle.Parent = Title
+
+    -- Close Button
+    local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Parent = MainFrame
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+    CloseBtn.Size = UDim2.new(0.12, 0, 0.12, 0)
+    CloseBtn.Position = UDim2.new(0.88, 0, 0, 0)
+    CloseBtn.Text = "X"
+    CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    CloseBtn.Font = Enum.Font.GothamBold
+    CloseBtn.TextSize = 18
+    CloseBtn.ZIndex = 105
+    
+    local UICornerClose = Instance.new("UICorner")
+    UICornerClose.CornerRadius = UDim.new(0.3, 0)
+    UICornerClose.Parent = CloseBtn
+    
+    CloseBtn.Activated:Connect(function() MainFrame.Visible = false end)
+    ToggleBtn.Activated:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
+
+    -- Tabs
+    local TabBar = Instance.new("Frame")
+    TabBar.Parent = MainFrame
+    TabBar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    TabBar.Size = UDim2.new(1, 0, 0.1, 0)
+    TabBar.Position = UDim2.new(0, 0, 0.12, 0)
+    TabBar.ZIndex = 104
+
+    local function CreateTabBtn(text, pos, callback)
+        local btn = Instance.new("TextButton")
+        btn.Parent = TabBar
+        btn.Size = UDim2.new(0.2, 0, 1, 0)
+        btn.Position = pos
+        btn.Text = text
+        btn.Font = Enum.Font.SourceSansBold
+        btn.TextSize = 14
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        btn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+        btn.ZIndex = 105
+        btn.Activated:Connect(callback)
+        return btn
+    end
+
+    local ContentFrame = Instance.new("Frame")
+    ContentFrame.Name = "ContentFrame"
+    ContentFrame.Parent = MainFrame
+    ContentFrame.BackgroundTransparency = 1
+    ContentFrame.Size = UDim2.new(1, 0, 0.78, 0)
+    ContentFrame.Position = UDim2.new(0, 0, 0.22, 0)
+    ContentFrame.ZIndex = 102
+
+    local Frames = {}
+    local function CreatePage(name)
+        local page = Instance.new("ScrollingFrame")
+        page.Name = name
+        page.Parent = ContentFrame
+        page.Size = UDim2.new(1, 0, 1, 0)
+        page.BackgroundTransparency = 1
+        page.Visible = false
+        page.ScrollBarThickness = 4
+        Frames[name] = page
+        return page
+    end
+
+    CreatePage("Farm")
+    CreatePage("Fruit")
+    CreatePage("Islands")
+    CreatePage("PvP")
+    CreatePage("Settings")
+    Frames["Farm"].Visible = true
+
+    CreateTabBtn("Farm", UDim2.new(0, 0, 0, 0), function() for _,f in pairs(Frames) do f.Visible = false end Frames["Farm"].Visible = true end)
+    CreateTabBtn("Fruit", UDim2.new(0.2, 0, 0, 0), function() for _,f in pairs(Frames) do f.Visible = false end Frames["Fruit"].Visible = true end)
+    CreateTabBtn("Islands", UDim2.new(0.4, 0, 0, 0), function() for _,f in pairs(Frames) do f.Visible = false end Frames["Islands"].Visible = true end)
+    CreateTabBtn("PvP", UDim2.new(0.6, 0, 0, 0), function() for _,f in pairs(Frames) do f.Visible = false end Frames["PvP"].Visible = true end)
+    CreateTabBtn("Settings", UDim2.new(0.8, 0, 0, 0), function() for _,f in pairs(Frames) do f.Visible = false end Frames["Settings"].Visible = true end)
+
+    return Frames, ScreenGui
+end
+
+local Frames, ScreenGui = CreateUI()
+
+-- // HELPER FUNCTIONS //
+
+local function CreateSwitch(parent, index, text, settingKey, callback)
+    local btn = Instance.new("TextButton")
+    btn.Parent = parent
+    btn.BackgroundColor3 = _G.Settings[settingKey] and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
+    btn.Size = UDim2.new(0.9, 0, 0.10, 0)
+    btn.Position = UDim2.new(0.05, 0, 0.05 + index * 0.11, 0)
+    btn.Text = text .. ": " .. (_G.Settings[settingKey] and "ON" or "OFF")
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+    btn.ZIndex = 103
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0.2, 0)
+    corner.Parent = btn
+    
+    btn.Activated:Connect(function()
+        _G.Settings[settingKey] = not _G.Settings[settingKey]
+        _G[settingKey] = _G.Settings[settingKey] -- Sync global
+        btn.Text = text .. ": " .. (_G.Settings[settingKey] and "ON" or "OFF")
+        btn.BackgroundColor3 = _G.Settings[settingKey] and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
+        if callback then callback(_G.Settings[settingKey]) end
+    end)
+    return btn
+end
+
+local function SafeInvoke(remote, ...)
+    if remote then
+        local args = {...}
+        local success, err = pcall(function() remote:InvokeServer(unpack(args)) end)
+        if not success then warn("Remote error:", err) end
+    end
+end
+
+-- // GAME LOGIC //
+
+local IslandDefs = {
+    {label="Starter Island", req=0, patterns={"starter","start","pirate"}},
+    {label="Jungle (15+)", req=15, patterns={"jungle"}},
+    {label="Pirate Village (30+)", req=30, patterns={"pirate village","pirate"}},
+    {label="Desert (60+)", req=60, patterns={"desert"}},
+    {label="Middle Island", req=0, patterns={"middle","middle town"}},
+    {label="Frozen Village (90+)", req=90, patterns={"frozen","snow"}},
+    {label="Marine Fortress (120+)", req=120, patterns={"marine fortress","marine"}},
+    {label="Skylands (150+)", req=150, patterns={"sky","skypia"}},
+    {label="Prison (190+)", req=190, patterns={"prison"}},
+    {label="Colosseum (225+)", req=225, patterns={"colosseum"}},
+    {label="Magma Village (300+)", req=300, patterns={"magma"}},
+    {label="Underwater City (375+)", req=375, patterns={"underwater"}},
+    {label="Fountain City (625+)", req=625, patterns={"fountain"}}
+}
+
+local function GetIslandCFrame(def)
+    if State.IslandCache[def.label] then return State.IslandCache[def.label] end
+
+    -- Optimized Search: Search top-level folders first if possible
+    -- Since we don't know the exact map structure, we search Workspace children
+    for _, pat in ipairs(def.patterns) do
+        local needle = string.lower(pat)
+        for _, d in ipairs(Workspace:GetChildren()) do
+            -- Optimization: Skip obvious non-island objects
+            if not d:IsA("Terrain") and not d:IsA("Camera") and not Players:GetPlayerFromCharacter(d) then
+                 local name = string.lower(d.Name)
+                 if string.find(name, needle) then
+                    local targetPart = nil
+                    if d:IsA("Model") then
+                        targetPart = d.PrimaryPart or d:FindFirstChildWhichIsA("BasePart", true)
+                    elseif d:IsA("BasePart") then
+                        targetPart = d
+                    end
+                    
+                    if targetPart then
+                        local cf = targetPart.CFrame + Vector3.new(0, 50, 0) -- High above to avoid stuck
+                        State.IslandCache[def.label] = cf
+                        return cf
+                    end
+                 end
             end
         end
     end
-    return ball
+    return nil
 end
 
-local function Parry()
-    if not LocalPlayer.Character then return end
+local function TeleportTo(cframe)
+    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return end
     
-    -- 1. Эмуляция нажатия ButtonR1 (Блок) - Основной запрос пользователя
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.ButtonR1, false, game)
-    task.wait(0.01)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.ButtonR1, false, game)
+    local hrp = Player.Character.HumanoidRootPart
+    local dist = (hrp.Position - cframe.Position).Magnitude
     
-    -- 2. Эмуляция нажатия F (ПК Классика)
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-    task.wait(0.01)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-    
-    -- 3. Эмуляция клика (ПК Мышь / Некоторые режимы)
-    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-    task.wait(0.01)
-    VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-    
-    -- 4. Для мобильных (Touch) - Прямая эмуляция тапа
-    if UserInputService.TouchEnabled then
-         VirtualUser:Button1Down(Vector2.new(0,0))
-         VirtualUser:Button1Up(Vector2.new(0,0))
+    -- Stop existing tweens if target is significantly different or if forced
+    -- But if we are already tweening to this location, ignore
+    if State.IsTweening and (State.TargetCFrame and (State.TargetCFrame.Position - cframe.Position).Magnitude < 10) then
+        return
     end
-    
-    if Settings.Debug then print("Parry Attempted with R1/F/Click!") end
-end
 
-local function UseAbilities()
-    if not Settings.AutoAbility then return end
+    for _, t in pairs(State.ActiveTweens) do t:Cancel() end
+    State.ActiveTweens = {}
+    State.IsTweening = false
     
-    -- Ability 1: ButtonR2
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.ButtonR2, false, game)
-    task.wait(0.05)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.ButtonR2, false, game)
-    
-    -- Ability 2: ButtonL2
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.ButtonL2, false, game)
-    task.wait(0.05)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.ButtonL2, false, game)
-end
-
-RunService.RenderStepped:Connect(function()
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local HRP = LocalPlayer.Character.HumanoidRootPart
-    
-    -- Обновление визуала
-    if Settings.Visuals then
-        VizPart.Parent = Workspace
-        VizPart.Position = HRP.Position
-        VizPart.Size = Vector3.new(Settings.Range * 2, Settings.Range * 2, Settings.Range * 2)
+    if dist > 300 then
+        -- Tween for long distance
+        State.IsTweening = true
+        State.TargetCFrame = cframe
+        
+        local speed = 300
+        local time = dist / speed
+        local ti = TweenInfo.new(time, Enum.EasingStyle.Linear)
+        
+        local noclip = RunService.Stepped:Connect(function()
+            if Player.Character then
+                for _, v in pairs(Player.Character:GetDescendants()) do
+                    if v:IsA("BasePart") then v.CanCollide = false end
+                end
+                -- Maintain flight height or path
+                if Player.Character:FindFirstChild("HumanoidRootPart") then
+                    Player.Character.HumanoidRootPart.Velocity = Vector3.zero
+                end
+            end
+        end)
+        
+        local tween = TweenService:Create(hrp, ti, {CFrame = cframe})
+        table.insert(State.ActiveTweens, tween)
+        tween:Play()
+        
+        tween.Completed:Connect(function()
+            noclip:Disconnect()
+            State.IsTweening = false
+            State.TargetCFrame = nil
+            if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+                Player.Character.HumanoidRootPart.CFrame = cframe
+            end
+        end)
     else
-        VizPart.Parent = nil
+        hrp.CFrame = cframe
+    end
+end
+
+-- // AUTO FARM //
+
+local function GetQuestTarget()
+    local gui = Player:FindFirstChild("PlayerGui")
+    if gui and gui:FindFirstChild("Main") and gui.Main:FindFirstChild("Quest") and gui.Main.Quest.Visible then
+         local title = gui.Main.Quest.Container.QuestTitle.Title.Text
+         -- "Defeat 8 Bandits (0/8)" -> "Bandit"
+         -- Remove "Defeat", numbers, parens
+         local clean = title:gsub("Defeat", ""):gsub("%d+", ""):gsub("%(", ""):gsub("%)", ""):gsub("/", "")
+         -- Remove trailing "s" (Bandits -> Bandit) - simple heuristic
+         if clean:sub(-1) == "s" then clean = clean:sub(1, -2) end
+         -- Trim spaces
+         clean = clean:match("^%s*(.-)%s*$")
+         return clean
+    end
+    return nil
+end
+
+local function EquipWeapon()
+    local char = Player.Character
+    if not char then return end
+    
+    -- Check if already equipped
+    local current = char:FindFirstChildOfClass("Tool")
+    if current and (current.ToolTip == "Melee" or current.ToolTip == "Sword") then return current end
+    
+    for _, t in pairs(Player.Backpack:GetChildren()) do
+        if t:IsA("Tool") and (t.ToolTip == "Melee" or t.ToolTip == "Sword" or t.Name == "Combat") then
+            char.Humanoid:EquipTool(t)
+            return t
+        end
+    end
+end
+
+-- Optimized Mob Search
+local function FindNearestEnemy(targetName)
+    local enemies = Workspace:FindFirstChild("Enemies")
+    if not enemies then return nil end
+    
+    local hrp = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    
+    local bestMob = nil
+    local minDiv = math.huge
+    
+    for _, v in pairs(enemies:GetChildren()) do
+        if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
+            local isMatch = true
+            if targetName then
+                -- Case insensitive matching
+                local tName = string.lower(targetName)
+                local vName = string.lower(v.Name)
+                isMatch = string.find(vName, tName) or string.find(tName, vName)
+            end
+            
+            if isMatch then
+                local dist = (hrp.Position - v.HumanoidRootPart.Position).Magnitude
+                if dist < minDiv then
+                    minDiv = dist
+                    bestMob = v
+                end
+            end
+        end
+    end
+    return bestMob
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.1) -- Reduced frequency for stability
+        if _G.Settings.AutoFarm and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+            pcall(function()
+                -- 1. Auto Quest (Simplified)
+                if _G.Settings.AutoQuest then
+                    -- Trigger remote to take quest if not active
+                    -- (Specific to Blox Fruits logic, needs specific Remotes)
+                    -- For safety, we skip complex quest taking logic here to avoid errors
+                end
+                
+                -- 2. Target Logic
+                local questMobName = GetQuestTarget()
+                local target = State.CurrentTarget
+                
+                -- Force retarget if we have a quest and current target is not the quest mob
+                if questMobName then
+                     if target and not string.find(string.lower(target.Name), string.lower(questMobName)) then
+                         target = nil
+                     end
+                end
+                
+                if not target or not target.Parent or target.Humanoid.Health <= 0 then
+                    target = FindNearestEnemy(questMobName)
+                    State.CurrentTarget = target
+                end
+                
+                -- 3. Attack
+                if target then
+                    local hrp = Player.Character.HumanoidRootPart
+                    local tHrp = target.HumanoidRootPart
+                    local dist = (hrp.Position - tHrp.Position).Magnitude
+                    
+                    -- Fly to target if far away
+                    if dist > 350 then
+                        TeleportTo(tHrp.CFrame + Vector3.new(0, 50, 0))
+                        return -- Wait for arrival
+                    else
+                        -- Stop flying if close
+                        if State.IsTweening then
+                             for _, t in pairs(State.ActiveTweens) do t:Cancel() end
+                             State.ActiveTweens = {}
+                             State.IsTweening = false
+                        end
+                        
+                        -- Teleport to mob (above)
+                        hrp.CFrame = CFrame.lookAt(tHrp.Position + Vector3.new(0, 7, 0), tHrp.Position)
+                        hrp.Velocity = Vector3.zero
+                        
+                        -- Reach Aura
+                        if _G.Settings.ReachAura then
+                            tHrp.Size = Vector3.new(60, 60, 60)
+                            tHrp.Transparency = 0.5
+                            tHrp.CanCollide = false
+                        end
+                        
+                        -- Attack
+                        local weapon = EquipWeapon()
+                        if weapon then
+                            weapon:Activate()
+                            if _G.Settings.MobileAttackOnly then
+                                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                                task.wait(0.05)
+                                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                            else
+                                VirtualUser:CaptureController()
+                                VirtualUser:ClickButton1(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
+                            end
+                        end
+                    end
+                end
+            end)
+        end
     end
 end)
 
-RunService.Heartbeat:Connect(function()
-    if not Settings.AutoParry then return end
-    if not LocalPlayer.Character or not LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local ball = GetBall()
-    if not ball then return end
-    
-    local HRP = LocalPlayer.Character.HumanoidRootPart
-    local distance = (ball.Position - HRP.Position).Magnitude
-    local velocity = ball.AssemblyLinearVelocity
-    local speed = velocity.Magnitude
-    
-    -- Вектор движения мяча
-    local ballDir = velocity.Unit
-    -- Вектор от мяча к игроку
-    local toPlayerDir = (HRP.Position - ball.Position).Unit
-    
-    -- Dot Product: Насколько мяч летит в нашу сторону (1 = прямо в нас)
-    local dot = ballDir:Dot(toPlayerDir)
-    
-    -- Логика парирования
-    -- Если мяч близко И летит в нашу сторону (dot > 0.4)
-    if distance <= Settings.Range and dot > 0.4 then
-        Parry()
-        UseAbilities() -- Also try to use abilities if in combat
-    elseif distance <= 15 then 
-        -- Экстренное парирование если мяч очень близко (даже если летит боком/лагом)
-        Parry()
-        UseAbilities()
-    end
-    
-    -- Адаптивная дистанция для высоких скоростей
-    if speed > 50 then
-        Settings.Range = math.clamp(speed / 2, 20, 100)
-    else
-        Settings.Range = 25
+-- // ESP & VISUALS //
+
+-- Fruit ESP
+task.spawn(function()
+    while true do
+        task.wait(2) -- Scan every 2s
+        if _G.Settings.FruitESP or _G.Settings.AutoCollectFruit then
+            local fruits = {}
+            for _, v in pairs(Workspace:GetChildren()) do
+                if v:IsA("Tool") and (v.Name:find("Fruit") or v:FindFirstChild("Handle")) then
+                    table.insert(fruits, v)
+                end
+            end
+            
+            State.Fruits = fruits
+            
+            -- Draw ESP
+            if _G.Settings.FruitESP then
+                for _, f in pairs(fruits) do
+                    if f:FindFirstChild("Handle") and not f.Handle:FindFirstChild("FruitESP") then
+                        local b = Instance.new("BillboardGui")
+                        b.Name = "FruitESP"
+                        b.Adornee = f.Handle
+                        b.Size = UDim2.new(0, 200, 0, 50)
+                        b.AlwaysOnTop = true
+                        
+                        local t = Instance.new("TextLabel")
+                        t.Parent = b
+                        t.Size = UDim2.new(1,0,1,0)
+                        t.BackgroundTransparency = 1
+                        t.Text = f.Name
+                        t.TextColor3 = Color3.new(1, 0, 0)
+                        t.TextStrokeTransparency = 0
+                        b.Parent = f.Handle
+                    end
+                end
+            end
+            
+            -- Auto Collect
+            if _G.Settings.AutoCollectFruit and #fruits > 0 then
+                local f = fruits[1] -- Take first
+                if f and f:FindFirstChild("Handle") then
+                    Player.Character.HumanoidRootPart.CFrame = f.Handle.CFrame
+                end
+            end
+        end
     end
 end)
 
--- Уведомление о запуске
-game:GetService("StarterGui"):SetCore("SendNotification", {
-    Title = "Phantom Hub";
-    Text = "Script Loaded! Press Toggle to Start.";
-    Duration = 5;
-})
+-- Chest ESP (Optimized)
+task.spawn(function()
+    while true do
+        task.wait(3)
+        if _G.Settings.ChestESP or _G.Settings.AutoFarmChests then
+            -- Collect Chests
+            local chests = {}
+            -- Optimization: Only scan if we haven't recently or if count is low
+            -- For robust ESP we scan Workspace descendants but throttling is key
+            for _, v in pairs(Workspace:GetDescendants()) do
+                if v.Name:find("Chest") and (v:IsA("Part") or v:IsA("MeshPart")) then
+                    table.insert(chests, v)
+                end
+            end
+            State.Chests = chests
+            
+            if _G.Settings.ChestESP then
+                for _, c in pairs(chests) do
+                    if not c:FindFirstChild("ChestESP") then
+                        local b = Instance.new("BillboardGui")
+                        b.Name = "ChestESP"
+                        b.Adornee = c
+                        b.Size = UDim2.new(0, 100, 0, 30)
+                        b.AlwaysOnTop = true
+                        local t = Instance.new("TextLabel")
+                        t.Parent = b
+                        t.Size = UDim2.new(1,0,1,0)
+                        t.BackgroundTransparency = 1
+                        t.Text = "Chest"
+                        t.TextColor3 = Color3.fromRGB(255, 255, 0)
+                        t.TextStrokeTransparency = 0
+                        b.Parent = c
+                    end
+                end
+            end
+            
+            if _G.Settings.AutoFarmChests and #chests > 0 then
+                local c = chests[math.random(1, #chests)]
+                if c then
+                    Player.Character.HumanoidRootPart.CFrame = c.CFrame
+                    task.wait(1)
+                end
+            end
+        end
+    end
+end)
+
+-- FPS Boost (One-time trigger + toggle)
+local function ApplyFPSBoost()
+    if not _G.Settings.FPSBoost then return end
+    
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 9e9
+    for _, v in pairs(Workspace:GetDescendants()) do
+        if v:IsA("BasePart") and v.Material ~= Enum.Material.Plastic then
+            v.Material = Enum.Material.Plastic
+            v.Reflectance = 0
+        elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
+            v.Enabled = false
+        end
+    end
+end
+
+-- // UI BUILDERS //
+
+local farmIdx = 0
+CreateSwitch(Frames["Farm"], farmIdx, "Auto Farm", "AutoFarm"); farmIdx = farmIdx + 1
+CreateSwitch(Frames["Farm"], farmIdx, "Auto Quest", "AutoQuest"); farmIdx = farmIdx + 1
+CreateSwitch(Frames["Farm"], farmIdx, "Hitbox Reach", "ReachAura"); farmIdx = farmIdx + 1
+CreateSwitch(Frames["Farm"], farmIdx, "Auto Elite", "AutoElite"); farmIdx = farmIdx + 1
+
+local fruitIdx = 0
+CreateSwitch(Frames["Fruit"], fruitIdx, "Fruit ESP", "FruitESP"); fruitIdx = fruitIdx + 1
+CreateSwitch(Frames["Fruit"], fruitIdx, "Auto Collect", "AutoCollectFruit"); fruitIdx = fruitIdx + 1
+CreateSwitch(Frames["Fruit"], fruitIdx, "Chest ESP", "ChestESP"); fruitIdx = fruitIdx + 1
+CreateSwitch(Frames["Fruit"], fruitIdx, "Auto Chests", "AutoFarmChests"); fruitIdx = fruitIdx + 1
+
+local setIdx = 0
+CreateSwitch(Frames["Settings"], setIdx, "FPS Boost", "FPSBoost", ApplyFPSBoost); setIdx = setIdx + 1
+CreateSwitch(Frames["Settings"], setIdx, "Mobile Attack", "MobileAttackOnly"); setIdx = setIdx + 1
+CreateSwitch(Frames["Settings"], setIdx, "Walk On Water", "WalkOnWater"); setIdx = setIdx + 1
+CreateSwitch(Frames["Settings"], setIdx, "Inf Geppo", "InfGeppo"); setIdx = setIdx + 1
+
+local islandIdx = 0
+for _, def in ipairs(IslandDefs) do
+    local btn = Instance.new("TextButton")
+    btn.Parent = Frames["Islands"]
+    btn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
+    btn.Size = UDim2.new(0.9, 0, 0.10, 0)
+    btn.Position = UDim2.new(0.05, 0, 0.05 + islandIdx * 0.11, 0)
+    btn.Text = def.label
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 14
+    
+    local c = Instance.new("UICorner"); c.Parent = btn
+    
+    btn.Activated:Connect(function()
+        local cf = GetIslandCFrame(def)
+        if cf then TeleportTo(cf) end
+    end)
+    islandIdx = islandIdx + 1
+end
+
+-- // EXTRAS //
+
+-- Infinite Geppo
+UserInputService.JumpRequest:Connect(function()
+    if _G.Settings.InfGeppo and Player.Character then
+        local hum = Player.Character:FindFirstChild("Humanoid")
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+-- Walk On Water
+task.spawn(function()
+    local platform = Instance.new("Part")
+    platform.Name = "WaterWalker"
+    platform.Size = Vector3.new(20, 1, 20)
+    platform.Transparency = 1
+    platform.Anchored = true
+    platform.CanCollide = true
+    
+    while true do
+        task.wait(0.5)
+        if _G.Settings.WalkOnWater and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
+            local hrp = Player.Character.HumanoidRootPart
+            if hrp.Position.Y < 5 then -- Only near water level
+                platform.Parent = Workspace
+                platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 3.5, hrp.Position.Z)
+            end
+        else
+            platform.Parent = nil
+        end
+    end
+end)
+
+print("✅ Blox Fruits Script Optimized Loaded! Version:", _G.ScriptVersion)
