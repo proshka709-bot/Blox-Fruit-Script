@@ -12,6 +12,7 @@ local Camera = Workspace.CurrentCamera
 local Settings = {
     AutoParry = true,
     Visuals = true,
+    AutoAbility = false, -- Авто-способности
     Range = 25, -- Дистанция для парирования
     CurveAdjust = 1.2, -- Поправка на скорость
     Debug = false
@@ -90,7 +91,7 @@ end)
 -- Visuals Toggle
 local VizBtn = Instance.new("TextButton")
 VizBtn.Size = UDim2.new(0.9, 0, 0, 35)
-VizBtn.Position = UDim2.new(0.05, 0, 0.6, 0)
+VizBtn.Position = UDim2.new(0.05, 0, 0.55, 0) -- Чуть выше
 VizBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 200)
 VizBtn.Text = "Visuals: ON"
 VizBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -103,6 +104,27 @@ VizBtn.MouseButton1Click:Connect(function()
     Settings.Visuals = not Settings.Visuals
     VizBtn.Text = "Visuals: " .. (Settings.Visuals and "ON" or "OFF")
 end)
+
+-- Auto Ability Toggle
+local AbilityBtn = Instance.new("TextButton")
+AbilityBtn.Size = UDim2.new(0.9, 0, 0, 35)
+AbilityBtn.Position = UDim2.new(0.05, 0, 0.8, 0)
+AbilityBtn.BackgroundColor3 = Color3.fromRGB(200, 150, 50)
+AbilityBtn.Text = "Auto Ability: OFF"
+AbilityBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+AbilityBtn.Font = Enum.Font.GothamSemibold
+AbilityBtn.TextSize = 14
+AbilityBtn.Parent = MainFrame
+Instance.new("UICorner", AbilityBtn).CornerRadius = UDim.new(0, 6)
+
+AbilityBtn.MouseButton1Click:Connect(function()
+    Settings.AutoAbility = not Settings.AutoAbility
+    AbilityBtn.Text = "Auto Ability: " .. (Settings.AutoAbility and "ON" or "OFF")
+    AbilityBtn.BackgroundColor3 = Settings.AutoAbility and Color3.fromRGB(50, 200, 50) or Color3.fromRGB(200, 150, 50)
+end)
+
+-- Increase Frame Size for new button
+MainFrame.Size = UDim2.new(0, 220, 0, 210)
 
 -- // LOGIC //
 
@@ -136,25 +158,42 @@ end
 local function Parry()
     if not LocalPlayer.Character then return end
     
-    -- 1. Эмуляция нажатия F (Блок)
+    -- 1. Эмуляция нажатия ButtonR1 (Блок) - Основной запрос пользователя
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.ButtonR1, false, game)
+    task.wait(0.01)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.ButtonR1, false, game)
+    
+    -- 2. Эмуляция нажатия F (ПК Классика)
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-    task.wait(0.05)
+    task.wait(0.01)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
     
-    -- 2. Эмуляция клика (для некоторых режимов)
+    -- 3. Эмуляция клика (ПК Мышь / Некоторые режимы)
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-    task.wait(0.05)
+    task.wait(0.01)
     VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
     
-    -- 3. Для мобильных (Touch)
+    -- 4. Для мобильных (Touch) - Прямая эмуляция тапа
     if UserInputService.TouchEnabled then
-         -- Попытка найти кнопку блока на экране (если есть GUI)
-         -- Обычно это большая кнопка справа
          VirtualUser:Button1Down(Vector2.new(0,0))
          VirtualUser:Button1Up(Vector2.new(0,0))
     end
     
-    if Settings.Debug then print("Parry Attempted!") end
+    if Settings.Debug then print("Parry Attempted with R1/F/Click!") end
+end
+
+local function UseAbilities()
+    if not Settings.AutoAbility then return end
+    
+    -- Ability 1: ButtonR2
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.ButtonR2, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.ButtonR2, false, game)
+    
+    -- Ability 2: ButtonL2
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.ButtonL2, false, game)
+    task.wait(0.05)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.ButtonL2, false, game)
 end
 
 RunService.RenderStepped:Connect(function()
@@ -196,9 +235,11 @@ RunService.Heartbeat:Connect(function()
     -- Если мяч близко И летит в нашу сторону (dot > 0.4)
     if distance <= Settings.Range and dot > 0.4 then
         Parry()
+        UseAbilities() -- Also try to use abilities if in combat
     elseif distance <= 15 then 
         -- Экстренное парирование если мяч очень близко (даже если летит боком/лагом)
         Parry()
+        UseAbilities()
     end
     
     -- Адаптивная дистанция для высоких скоростей
