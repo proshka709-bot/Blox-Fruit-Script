@@ -1,685 +1,595 @@
+--[[
+    Erafox: Advanced Game Scanner v2.0
+    Улучшенная версия с расширенным анализом и мобильным интерфейсом
+]]
+
 local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local VirtualUser = game:GetService("VirtualUser")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local TeleportService = game:GetService("TeleportService")
+local Workspace = game:GetService("Workspace")
 local HttpService = game:GetService("HttpService")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local Lighting = game:GetService("Lighting")
+local LocalPlayer = Players.LocalPlayer
 
-local Player = Players.LocalPlayer
-local Mouse = Player:GetMouse()
-
--- // VERSION //
-_G.ScriptVersion = "v1.1" -- Updated Version
-
--- // GLOBAL SETTINGS //
-_G.Settings = {
-    AutoFarm = false,
-    AutoQuest = false,
-    FruitESP = false,
-    AutoCollectFruit = false,
-    ServerFruitHop = false,
-    ReachAura = true,
-    AutoStats = false,
-    AttackDist = 3,
-    MobileAttackOnly = true,
-    AutoHaki = true,
-    ChestESP = false,
-    SpeedBoost = false,
-    WalkOnWater = false,
-    InfGeppo = false,
-    SelectStat = "Melee",
-    AutoBuyRandomFruit = false,
-    SmartAI = false,
-    AutoPvP = false,
-    AimBot = false,
-    PlayerESP = false,
-    AutoFarmChests = false,
-    FPSBoost = false,
-    AutoElite = false,
-    Invisibility = false
-}
-
--- Backward compatibility
-for k, v in pairs(_G.Settings) do _G[k] = v end
-setmetatable(_G, {
-    __newindex = function(t, k, v)
-        if _G.Settings[k] ~= nil then
-            _G.Settings[k] = v
-        end
-        rawset(t, k, v)
-    end
-})
-
--- // STATE MANAGEMENT //
-local State = {
-    CurrentTarget = nil,
-    IslandCache = {},
-    LastChestScan = 0,
-    Chests = {},
-    Fruits = {},
-    ActiveTweens = {},
-    IsTweening = false
-}
-
-local FruitSpawnData = {
-    LastSeenFruits = {},
-    SpawnTimes = {},
-    AverageSpawnTime = 3600,
-    LastDespawnTime = 0
-}
-
--- // UI SETUP //
-local function CreateUI()
-    local oldGui = Player:WaitForChild("PlayerGui"):FindFirstChild("BloxFruitMobileGUI_v4")
-    if oldGui then oldGui:Destroy() end
-
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "BloxFruitMobileGUI_v4"
-    ScreenGui.Parent = Player:WaitForChild("PlayerGui")
-    ScreenGui.ResetOnSpawn = false
-    ScreenGui.DisplayOrder = 1000
-    ScreenGui.IgnoreGuiInset = true
-
-    -- Toggle Button
-    local ToggleBtn = Instance.new("TextButton")
-    ToggleBtn.Name = "ToggleBtn"
-    ToggleBtn.Parent = ScreenGui
-    ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
-    ToggleBtn.Position = UDim2.new(0, 50, 0.3, 0) 
-    ToggleBtn.Size = UDim2.new(0, 60, 0, 60)
-    ToggleBtn.Font = Enum.Font.SourceSansBold
-    ToggleBtn.Text = "MENU"
-    ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    ToggleBtn.TextSize = 16
-    ToggleBtn.ZIndex = 100
-    
-    local UICornerBtn = Instance.new("UICorner")
-    UICornerBtn.CornerRadius = UDim.new(0.5, 0)
-    UICornerBtn.Parent = ToggleBtn
-
-    -- Main Frame
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Name = "MainFrame"
-    MainFrame.Parent = ScreenGui
-    MainFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-    MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    MainFrame.Size = UDim2.new(0.5, 0, 0.65, 0)
-    MainFrame.Visible = false
-    MainFrame.ZIndex = 101
-    
-    local UICornerFrame = Instance.new("UICorner")
-    UICornerFrame.CornerRadius = UDim.new(0.05, 0)
-    UICornerFrame.Parent = MainFrame
-
-    -- Title
-    local Title = Instance.new("TextLabel")
-    Title.Parent = MainFrame
-    Title.Text = "BLOX FRUITS OPTIMIZED v4.0"
-    Title.Size = UDim2.new(1, 0, 0.12, 0)
-    Title.BackgroundColor3 = Color3.fromRGB(255, 85, 0)
-    Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-    Title.Font = Enum.Font.SourceSansBold
-    Title.TextSize = 18
-    Title.ZIndex = 102
-    
-    local UICornerTitle = Instance.new("UICorner")
-    UICornerTitle.CornerRadius = UDim.new(0.1, 0)
-    UICornerTitle.Parent = Title
-
-    -- Close Button
-    local CloseBtn = Instance.new("TextButton")
-    CloseBtn.Parent = MainFrame
-    CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
-    CloseBtn.Size = UDim2.new(0.12, 0, 0.12, 0)
-    CloseBtn.Position = UDim2.new(0.88, 0, 0, 0)
-    CloseBtn.Text = "X"
-    CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    CloseBtn.Font = Enum.Font.GothamBold
-    CloseBtn.TextSize = 18
-    CloseBtn.ZIndex = 105
-    
-    local UICornerClose = Instance.new("UICorner")
-    UICornerClose.CornerRadius = UDim.new(0.3, 0)
-    UICornerClose.Parent = CloseBtn
-    
-    CloseBtn.Activated:Connect(function() MainFrame.Visible = false end)
-    ToggleBtn.Activated:Connect(function() MainFrame.Visible = not MainFrame.Visible end)
-
-    -- Tabs
-    local TabBar = Instance.new("Frame")
-    TabBar.Parent = MainFrame
-    TabBar.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-    TabBar.Size = UDim2.new(1, 0, 0.1, 0)
-    TabBar.Position = UDim2.new(0, 0, 0.12, 0)
-    TabBar.ZIndex = 104
-
-    local function CreateTabBtn(text, pos, callback)
-        local btn = Instance.new("TextButton")
-        btn.Parent = TabBar
-        btn.Size = UDim2.new(0.2, 0, 1, 0)
-        btn.Position = pos
-        btn.Text = text
-        btn.Font = Enum.Font.SourceSansBold
-        btn.TextSize = 14
-        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-        btn.ZIndex = 105
-        btn.Activated:Connect(callback)
-        return btn
-    end
-
-    local ContentFrame = Instance.new("Frame")
-    ContentFrame.Name = "ContentFrame"
-    ContentFrame.Parent = MainFrame
-    ContentFrame.BackgroundTransparency = 1
-    ContentFrame.Size = UDim2.new(1, 0, 0.78, 0)
-    ContentFrame.Position = UDim2.new(0, 0, 0.22, 0)
-    ContentFrame.ZIndex = 102
-
-    local Frames = {}
-    local function CreatePage(name)
-        local page = Instance.new("ScrollingFrame")
-        page.Name = name
-        page.Parent = ContentFrame
-        page.Size = UDim2.new(1, 0, 1, 0)
-        page.BackgroundTransparency = 1
-        page.Visible = false
-        page.ScrollBarThickness = 4
-        Frames[name] = page
-        return page
-    end
-
-    CreatePage("Farm")
-    CreatePage("Fruit")
-    CreatePage("Islands")
-    CreatePage("PvP")
-    CreatePage("Settings")
-    Frames["Farm"].Visible = true
-
-    CreateTabBtn("Farm", UDim2.new(0, 0, 0, 0), function() for _,f in pairs(Frames) do f.Visible = false end Frames["Farm"].Visible = true end)
-    CreateTabBtn("Fruit", UDim2.new(0.2, 0, 0, 0), function() for _,f in pairs(Frames) do f.Visible = false end Frames["Fruit"].Visible = true end)
-    CreateTabBtn("Islands", UDim2.new(0.4, 0, 0, 0), function() for _,f in pairs(Frames) do f.Visible = false end Frames["Islands"].Visible = true end)
-    CreateTabBtn("PvP", UDim2.new(0.6, 0, 0, 0), function() for _,f in pairs(Frames) do f.Visible = false end Frames["PvP"].Visible = true end)
-    CreateTabBtn("Settings", UDim2.new(0.8, 0, 0, 0), function() for _,f in pairs(Frames) do f.Visible = false end Frames["Settings"].Visible = true end)
-
-    return Frames, ScreenGui
+-- Удаляем старый GUI если существует
+if game.CoreGui:FindFirstChild("ErafoxScanner") then
+    game.CoreGui.ErafoxScanner:Destroy()
 end
 
-local Frames, ScreenGui = CreateUI()
+-- ==================== КОНФИГУРАЦИЯ ====================
+local Config = {
+    AutoRefresh = false,
+    RefreshInterval = 10,
+    DeepScan = true,
+    LogToConsole = true,
+    SaveToFile = false,
+    ShowWarnings = true
+}
 
--- // HELPER FUNCTIONS //
+-- ==================== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ====================
+local ScannerData = {}
+local ScanHistory = {}
+local RemoteCache = {}
+local LastScanTime = 0
 
-local function CreateSwitch(parent, index, text, settingKey, callback)
+-- ==================== ПОЛЕЗНЫЕ ФУНКЦИИ ====================
+function formatMemory(bytes)
+    if bytes < 1024 then
+        return string.format("%d B", bytes)
+    elseif bytes < 1024 * 1024 then
+        return string.format("%.1f KB", bytes / 1024)
+    else
+        return string.format("%.1f MB", bytes / (1024 * 1024))
+    end
+end
+
+function getObjectType(obj)
+    if obj:IsA("RemoteEvent") then return "📡 RemoteEvent"
+    elseif obj:IsA("RemoteFunction") then return "🔧 RemoteFunction"
+    elseif obj:IsA("BindableEvent") then return "🔗 BindableEvent"
+    elseif obj:IsA("ModuleScript") then return "📦 ModuleScript"
+    elseif obj:IsA("Script") then return "📜 Script"
+    elseif obj:IsA("LocalScript") then return "📱 LocalScript"
+    elseif obj:IsA("Folder") then return "📁 Folder"
+    else return "❓ " .. obj.ClassName end
+end
+
+function getRelevantNames()
+    return {
+        "parry", "block", "hit", "deflect", "ball", "phantom", "dodge", 
+        "shield", "attack", "ability", "skill", "power", "damage", "health",
+        "game", "round", "match", "player", "score", "win", "lose"
+    }
+end
+
+function isRelevantObject(obj)
+    local nameLower = obj.Name:lower()
+    for _, keyword in pairs(getRelevantNames()) do
+        if nameLower:find(keyword) then
+            return true
+        end
+    end
+    return false
+end
+
+-- ==================== ОСНОВНЫЕ ФУНКЦИИ СКАНИРОВАНИЯ ====================
+function scanRemotes()
+    local remotes = {
+        Events = {},
+        Functions = {},
+        Bindables = {}
+    }
+    
+    for _, obj in pairs(game:GetDescendants()) do
+        if obj:IsA("RemoteEvent") then
+            table.insert(remotes.Events, {
+                Name = obj.Name,
+                Path = obj:GetFullName(),
+                Parent = obj.Parent.Name,
+                Class = "RemoteEvent"
+            })
+        elseif obj:IsA("RemoteFunction") then
+            table.insert(remotes.Functions, {
+                Name = obj.Name,
+                Path = obj:GetFullName(),
+                Parent = obj.Parent.Name,
+                Class = "RemoteFunction"
+            })
+        elseif obj:IsA("BindableEvent") then
+            table.insert(remotes.Bindables, {
+                Name = obj.Name,
+                Path = obj:GetFullName(),
+                Parent = obj.Parent.Name,
+                Class = "BindableEvent"
+            })
+        end
+    end
+    
+    return remotes
+end
+
+function scanGameObjects()
+    local objects = {
+        Balls = {},
+        Players = {},
+        Important = {}
+    }
+    
+    -- Сканируем шары
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        local nameLower = obj.Name:lower()
+        if nameLower:find("ball") or nameLower:find("sphere") or nameLower:find("orb") then
+            table.insert(objects.Balls, {
+                Name = obj.Name,
+                Class = obj.ClassName,
+                Position = obj:IsA("BasePart") and tostring(obj.Position) or "N/A",
+                Size = obj:IsA("BasePart") and tostring(obj.Size) or "N/A",
+                Path = obj:GetFullName()
+            })
+        end
+    end
+    
+    -- Сканируем игроков
+    for _, player in pairs(Players:GetPlayers()) do
+        if player.Character then
+            table.insert(objects.Players, {
+                Name = player.Name,
+                Health = player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health or 0,
+                Position = player.Character:FindFirstChild("HumanoidRootPart") and 
+                           tostring(player.Character.HumanoidRootPart.Position) or "N/A"
+            })
+        end
+    end
+    
+    -- Сканируем важные объекты
+    for _, obj in pairs(game:GetDescendants()) do
+        if isRelevantObject(obj) then
+            table.insert(objects.Important, {
+                Name = obj.Name,
+                Class = obj.ClassName,
+                Path = obj:GetFullName(),
+                Type = getObjectType(obj)
+            })
+        end
+    end
+    
+    return objects
+end
+
+function scanGUIElements()
+    local guiElements = {
+        Buttons = {},
+        Frames = {},
+        Labels = {}
+    }
+    
+    if LocalPlayer:FindFirstChild("PlayerGui") then
+        for _, gui in pairs(LocalPlayer.PlayerGui:GetDescendants()) do
+            if gui:IsA("TextButton") or gui:IsA("ImageButton") then
+                table.insert(guiElements.Buttons, {
+                    Name = gui.Name,
+                    Text = gui:IsA("TextButton") and gui.Text or "N/A",
+                    Visible = gui.Visible,
+                    Parent = gui.Parent.Name
+                })
+            elseif gui:IsA("Frame") then
+                table.insert(guiElements.Frames, {
+                    Name = gui.Name,
+                    Visible = gui.Visible,
+                    Size = tostring(gui.AbsoluteSize),
+                    Parent = gui.Parent.Name
+                })
+            elseif gui:IsA("TextLabel") then
+                table.insert(guiElements.Labels, {
+                    Name = gui.Name,
+                    Text = gui.Text,
+                    Visible = gui.Visible,
+                    Parent = gui.Parent.Name
+                })
+            end
+        end
+    end
+    
+    return guiElements
+end
+
+function scanModules()
+    local modules = {}
+    
+    for _, obj in pairs(game:GetDescendants()) do
+        if obj:IsA("ModuleScript") then
+            if isRelevantObject(obj) or Config.DeepScan then
+                table.insert(modules, {
+                    Name = obj.Name,
+                    Path = obj:GetFullName(),
+                    Parent = obj.Parent.Name
+                })
+            end
+        end
+    end
+    
+    return modules
+end
+
+function getGameStats()
+    local stats = game:GetService("Stats")
+    
+    return {
+        Ping = stats.Network.ServerStatsItem["Data Ping"]:GetValueString(),
+        FPS = math.floor(Workspace:GetRealPhysicsFPS()),
+        Memory = formatMemory(stats:GetTotalMemoryUsageMb() * 1024 * 1024),
+        Players = #Players:GetPlayers(),
+        Objects = #game:GetDescendants(),
+        Time = os.date("%H:%M:%S")
+    }
+end
+
+-- ==================== ОСНОВНОЕ СКАНИРОВАНИЕ ====================
+function performScan()
+    LastScanTime = tick()
+    
+    ScannerData = {
+        Remotes = scanRemotes(),
+        Objects = scanGameObjects(),
+        GUI = scanGUIElements(),
+        Modules = scanModules(),
+        Stats = getGameStats(),
+        Timestamp = os.date("%Y-%m-%d %H:%M:%S"),
+        GameName = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name
+    }
+    
+    -- Сохраняем в историю
+    table.insert(ScanHistory, {
+        Time = ScannerData.Timestamp,
+        Data = ScannerData
+    })
+    
+    -- Логируем в консоль
+    if Config.LogToConsole then
+        print("[Erafox] Сканирование завершено!")
+        print("Найдено RemoteEvents:", #ScannerData.Remotes.Events)
+        print("Найдено шаров:", #ScannerData.Objects.Balls)
+        print("Игроков онлайн:", ScannerData.Stats.Players)
+    end
+    
+    -- Сохраняем в файл если нужно
+    if Config.SaveToFile then
+        saveScanToFile()
+    end
+    
+    return ScannerData
+end
+
+function saveScanToFile()
+    if not isfolder("ErafoxScans") then
+        makefolder("ErafoxScans")
+    end
+    
+    local filename = "ErafoxScans/scan_" .. os.date("%Y%m%d_%H%M%S") .. ".json"
+    local jsonData = HttpService:JSONEncode(ScannerData)
+    
+    writefile(filename, jsonData)
+    print("[Erafox] Данные сохранены в:", filename)
+end
+
+-- ==================== СОЗДАНИЕ ИНТЕРФЕЙСА ====================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ErafoxScanner"
+ScreenGui.Parent = game.CoreGui
+ScreenGui.ResetOnSpawn = false
+
+-- Основное окно
+local MainWindow = Instance.new("Frame")
+MainWindow.Name = "MainWindow"
+MainWindow.Size = UDim2.new(0, 400, 0, 550)
+MainWindow.Position = UDim2.new(0.5, -200, 0.5, -275)
+MainWindow.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+MainWindow.BorderSizePixel = 0
+MainWindow.Active = true
+MainWindow.Draggable = true
+MainWindow.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = MainWindow
+
+-- Заголовок
+local TitleBar = Instance.new("Frame")
+TitleBar.Name = "TitleBar"
+TitleBar.Size = UDim2.new(1, 0, 0, 40)
+TitleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+TitleBar.Parent = MainWindow
+
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(1, -80, 1, 0)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.Text = "🔍 ERAFOX SCANNER v2.0"
+Title.TextColor3 = Color3.fromRGB(0, 255, 200)
+Title.BackgroundTransparency = 1
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 16
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TitleBar
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Size = UDim2.new(0, 30, 0, 30)
+CloseButton.Position = UDim2.new(1, -35, 0.5, -15)
+CloseButton.Text = "✕"
+CloseButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+CloseButton.TextColor3 = Color3.new(1, 1, 1)
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.TextSize = 14
+CloseButton.Parent = TitleBar
+
+CloseButton.MouseButton1Click:Connect(function()
+    ScreenGui:Destroy()
+end)
+
+-- Вкладки
+local TabContainer = Instance.new("Frame")
+TabContainer.Name = "TabContainer"
+TabContainer.Size = UDim2.new(1, -20, 0, 30)
+TabContainer.Position = UDim2.new(0, 10, 0, 50)
+TabContainer.BackgroundTransparency = 1
+TabContainer.Parent = MainWindow
+
+local Tabs = {"📊 Обзор", "📡 Remotes", "⚽ Объекты", "🎮 GUI", "📦 Модули", "⚙️ Настройки"}
+local CurrentTab = "📊 Обзор"
+
+local function createTabButton(text, xPos)
     local btn = Instance.new("TextButton")
-    btn.Parent = parent
-    btn.BackgroundColor3 = _G.Settings[settingKey] and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
-    btn.Size = UDim2.new(0.9, 0, 0.10, 0)
-    btn.Position = UDim2.new(0.05, 0, 0.05 + index * 0.11, 0)
-    btn.Text = text .. ": " .. (_G.Settings[settingKey] and "ON" or "OFF")
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 14
-    btn.ZIndex = 103
+    btn.Text = text
+    btn.Size = UDim2.new(0, 60, 1, 0)
+    btn.Position = UDim2.new(0, xPos, 0, 0)
+    btn.BackgroundColor3 = text == CurrentTab and Color3.fromRGB(0, 150, 255) or Color3.fromRGB(50, 50, 70)
+    btn.TextColor3 = Color3.new(1, 1, 1)
+    btn.Font = Enum.Font.Gotham
+    btn.TextSize = 12
+    btn.Parent = TabContainer
     
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0.2, 0)
-    corner.Parent = btn
-    
-    btn.Activated:Connect(function()
-        _G.Settings[settingKey] = not _G.Settings[settingKey]
-        _G[settingKey] = _G.Settings[settingKey] -- Sync global
-        btn.Text = text .. ": " .. (_G.Settings[settingKey] and "ON" or "OFF")
-        btn.BackgroundColor3 = _G.Settings[settingKey] and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(200, 0, 0)
-        if callback then callback(_G.Settings[settingKey]) end
+    btn.MouseButton1Click:Connect(function()
+        CurrentTab = text
+        updateDisplay()
     end)
+    
     return btn
 end
 
-local function SafeInvoke(remote, ...)
-    if remote then
-        local args = {...}
-        local success, err = pcall(function() remote:InvokeServer(unpack(args)) end)
-        if not success then warn("Remote error:", err) end
-    end
+for i, tabName in ipairs(Tabs) do
+    createTabButton(tabName, (i-1) * 65)
 end
 
--- // GAME LOGIC //
+-- Основное окно вывода
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Name = "ContentFrame"
+ContentFrame.Size = UDim2.new(1, -20, 1, -140)
+ContentFrame.Position = UDim2.new(0, 10, 0, 90)
+ContentFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+ContentFrame.Parent = MainWindow
 
-local IslandDefs = {
-    {label="Starter Island", req=0, patterns={"starter","start","pirate"}},
-    {label="Jungle (15+)", req=15, patterns={"jungle"}},
-    {label="Pirate Village (30+)", req=30, patterns={"pirate village","pirate"}},
-    {label="Desert (60+)", req=60, patterns={"desert"}},
-    {label="Middle Island", req=0, patterns={"middle","middle town"}},
-    {label="Frozen Village (90+)", req=90, patterns={"frozen","snow"}},
-    {label="Marine Fortress (120+)", req=120, patterns={"marine fortress","marine"}},
-    {label="Skylands (150+)", req=150, patterns={"sky","skypia"}},
-    {label="Prison (190+)", req=190, patterns={"prison"}},
-    {label="Colosseum (225+)", req=225, patterns={"colosseum"}},
-    {label="Magma Village (300+)", req=300, patterns={"magma"}},
-    {label="Underwater City (375+)", req=375, patterns={"underwater"}},
-    {label="Fountain City (625+)", req=625, patterns={"fountain"}}
-}
+local ContentUICorner = Instance.new("UICorner")
+ContentUICorner.CornerRadius = UDim.new(0, 6)
+ContentUICorner.Parent = ContentFrame
 
-local function GetIslandCFrame(def)
-    if State.IslandCache[def.label] then return State.IslandCache[def.label] end
+local OutputScroller = Instance.new("ScrollingFrame")
+OutputScroller.Name = "OutputScroller"
+OutputScroller.Size = UDim2.new(1, -10, 1, -10)
+OutputScroller.Position = UDim2.new(0, 5, 0, 5)
+OutputScroller.BackgroundTransparency = 1
+OutputScroller.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
+OutputScroller.ScrollBarThickness = 6
+OutputScroller.Parent = ContentFrame
 
-    -- Optimized Search: Search top-level folders first if possible
-    -- Since we don't know the exact map structure, we search Workspace children
-    for _, pat in ipairs(def.patterns) do
-        local needle = string.lower(pat)
-        for _, d in ipairs(Workspace:GetChildren()) do
-            -- Optimization: Skip obvious non-island objects
-            if not d:IsA("Terrain") and not d:IsA("Camera") and not Players:GetPlayerFromCharacter(d) then
-                 local name = string.lower(d.Name)
-                 if string.find(name, needle) then
-                    local targetPart = nil
-                    if d:IsA("Model") then
-                        targetPart = d.PrimaryPart or d:FindFirstChildWhichIsA("BasePart", true)
-                    elseif d:IsA("BasePart") then
-                        targetPart = d
-                    end
-                    
-                    if targetPart then
-                        local cf = targetPart.CFrame + Vector3.new(0, 50, 0) -- High above to avoid stuck
-                        State.IslandCache[def.label] = cf
-                        return cf
-                    end
-                 end
-            end
-        end
-    end
-    return nil
-end
+local OutputText = Instance.new("TextLabel")
+OutputText.Name = "OutputText"
+OutputText.Size = UDim2.new(1, 0, 0, 0)
+OutputText.Text = "Нажми SCAN для начала анализа"
+OutputText.TextColor3 = Color3.fromRGB(200, 200, 200)
+OutputText.BackgroundTransparency = 1
+OutputText.Font = Enum.Font.Gotham
+OutputText.TextSize = 12
+OutputText.TextXAlignment = Enum.TextXAlignment.Left
+OutputText.TextYAlignment = Enum.TextYAlignment.Top
+OutputText.TextWrapped = true
+OutputText.Parent = OutputScroller
 
-local function TeleportTo(cframe)
-    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local hrp = Player.Character.HumanoidRootPart
-    local dist = (hrp.Position - cframe.Position).Magnitude
-    
-    -- Stop existing tweens if target is significantly different or if forced
-    -- But if we are already tweening to this location, ignore
-    if State.IsTweening and (State.TargetCFrame and (State.TargetCFrame.Position - cframe.Position).Magnitude < 10) then
+-- Панель кнопок
+local ButtonPanel = Instance.new("Frame")
+ButtonPanel.Name = "ButtonPanel"
+ButtonPanel.Size = UDim2.new(1, -20, 0, 40)
+ButtonPanel.Position = UDim2.new(0, 10, 1, -50)
+ButtonPanel.BackgroundTransparency = 1
+ButtonPanel.Parent = MainWindow
+
+local ScanButton = Instance.new("TextButton")
+ScanButton.Name = "ScanButton"
+ScanButton.Size = UDim2.new(0.4, 0, 1, 0)
+ScanButton.Text = "🔍 SCAN NOW"
+ScanButton.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+ScanButton.TextColor3 = Color3.new(1, 1, 1)
+ScanButton.Font = Enum.Font.GothamBold
+ScanButton.TextSize = 14
+ScanButton.Parent = ButtonPanel
+
+local CopyButton = Instance.new("TextButton")
+CopyButton.Name = "CopyButton"
+CopyButton.Size = UDim2.new(0.4, 0, 1, 0)
+CopyButton.Position = UDim2.new(0.6, 0, 0, 0)
+CopyButton.Text = "📋 COPY DATA"
+CopyButton.BackgroundColor3 = Color3.fromRGB(80, 180, 80)
+CopyButton.TextColor3 = Color3.new(1, 1, 1)
+CopyButton.Font = Enum.Font.GothamBold
+CopyButton.TextSize = 14
+CopyButton.Parent = ButtonPanel
+
+-- Статус бар
+local StatusBar = Instance.new("Frame")
+StatusBar.Name = "StatusBar"
+StatusBar.Size = UDim2.new(1, -20, 0, 20)
+StatusBar.Position = UDim2.new(0, 10, 1, -25)
+StatusBar.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+StatusBar.Parent = MainWindow
+
+local StatusText = Instance.new("TextLabel")
+StatusText.Name = "StatusText"
+StatusText.Size = UDim2.new(1, -10, 1, 0)
+StatusText.Position = UDim2.new(0, 5, 0, 0)
+StatusText.Text = "Готов к сканированию"
+StatusText.TextColor3 = Color3.fromRGB(0, 255, 0)
+StatusText.BackgroundTransparency = 1
+StatusText.Font = Enum.Font.Gotham
+StatusText.TextSize = 11
+StatusText.TextXAlignment = Enum.TextXAlignment.Left
+StatusText.Parent = StatusBar
+
+-- ==================== ФУНКЦИИ ОБНОВЛЕНИЯ ИНТЕРФЕЙСА ====================
+function updateDisplay()
+    if not ScannerData or not ScannerData.Stats then
+        OutputText.Text = "Данные не собраны. Нажмите SCAN."
         return
     end
-
-    for _, t in pairs(State.ActiveTweens) do t:Cancel() end
-    State.ActiveTweens = {}
-    State.IsTweening = false
     
-    if dist > 300 then
-        -- Tween for long distance
-        State.IsTweening = true
-        State.TargetCFrame = cframe
+    local content = ""
+    
+    if CurrentTab == "📊 Обзор" then
+        content = content .. "=== ОБЗОР ИГРЫ ===\n\n"
+        content = content .. "🎮 Игра: " .. ScannerData.GameName .. "\n"
+        content = content .. "⏰ Время сканирования: " .. ScannerData.Timestamp .. "\n"
+        content = content .. "👥 Игроков онлайн: " .. ScannerData.Stats.Players .. "\n"
+        content = content .. "📡 Ping: " .. ScannerData.Stats.Ping .. "\n"
+        content = content .. "🎯 FPS: " .. ScannerData.Stats.FPS .. "\n"
+        content = content .. "💾 Память: " .. ScannerData.Stats.Memory .. "\n"
+        content = content .. "📊 Всего объектов: " .. ScannerData.Stats.Objects .. "\n\n"
         
-        local speed = 300
-        local time = dist / speed
-        local ti = TweenInfo.new(time, Enum.EasingStyle.Linear)
+        content = content .. "=== НАЙДЕНО ===\n"
+        content = content .. "📡 RemoteEvents: " .. #ScannerData.Remotes.Events .. "\n"
+        content = content .. "🔧 RemoteFunctions: " .. #ScannerData.Remotes.Functions .. "\n"
+        content = content .. "⚽ Шаров: " .. #ScannerData.Objects.Balls .. "\n"
+        content = content .. "🎮 GUI элементов: " .. (#ScannerData.GUI.Buttons + #ScannerData.GUI.Frames) .. "\n"
+        content = content .. "📦 Модулей: " .. #ScannerData.Modules .. "\n"
         
-        local noclip = RunService.Stepped:Connect(function()
-            if Player.Character then
-                for _, v in pairs(Player.Character:GetDescendants()) do
-                    if v:IsA("BasePart") then v.CanCollide = false end
-                end
-                -- Maintain flight height or path
-                if Player.Character:FindFirstChild("HumanoidRootPart") then
-                    Player.Character.HumanoidRootPart.Velocity = Vector3.zero
-                end
-            end
-        end)
+    elseif CurrentTab == "📡 Remotes" then
+        content = content .. "=== REMOTE EVENTS ===\n\n"
+        for _, remote in ipairs(ScannerData.Remotes.Events) do
+            content = content .. "📡 " .. remote.Name .. "\n"
+            content = content .. "   Путь: " .. remote.Path .. "\n"
+        end
         
-        local tween = TweenService:Create(hrp, ti, {CFrame = cframe})
-        table.insert(State.ActiveTweens, tween)
-        tween:Play()
+        content = content .. "\n=== REMOTE FUNCTIONS ===\n\n"
+        for _, func in ipairs(ScannerData.Remotes.Functions) do
+            content = content .. "🔧 " .. func.Name .. "\n"
+            content = content .. "   Путь: " .. func.Path .. "\n"
+        end
         
-        tween.Completed:Connect(function()
-            noclip:Disconnect()
-            State.IsTweening = false
-            State.TargetCFrame = nil
-            if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-                Player.Character.HumanoidRootPart.CFrame = cframe
-            end
-        end)
-    else
-        hrp.CFrame = cframe
+        content = content .. "\n=== BINDABLE EVENTS ===\n\n"
+        for _, bindable in ipairs(ScannerData.Remotes.Bindables) do
+            content = content .. "🔗 " .. bindable.Name .. "\n"
+            content = content .. "   Путь: " .. bindable.Path .. "\n"
+        end
+        
+    elseif CurrentTab == "⚽ Объекты" then
+        content = content .. "=== ШАРЫ В WORKSPACE ===\n\n"
+        for _, ball in ipairs(ScannerData.Objects.Balls) do
+            content = content .. "⚽ " .. ball.Name .. " (" .. ball.Class .. ")\n"
+            content = content .. "   Позиция: " .. ball.Position .. "\n"
+            content = content .. "   Размер: " .. ball.Size .. "\n"
+            content = content .. "   Путь: " .. ball.Path .. "\n\n"
+        end
+        
+        content = content .. "=== ВАЖНЫЕ ОБЪЕКТЫ ===\n\n"
+        for _, obj in ipairs(ScannerData.Objects.Important) do
+            content = content .. obj.Type .. " " .. obj.Name .. "\n"
+            content = content .. "   Путь: " .. obj.Path .. "\n\n"
+        end
+        
+    elseif CurrentTab == "🎮 GUI" then
+        content = content .. "=== КНОПКИ GUI ===\n\n"
+        for _, btn in ipairs(ScannerData.GUI.Buttons) do
+            content = content .. "🔘 " .. btn.Name .. "\n"
+            content = content .. "   Текст: " .. (btn.Text or "N/A") .. "\n"
+            content = content .. "   Видимость: " .. (btn.Visible and "Да" or "Нет") .. "\n\n"
+        end
+        
+    elseif CurrentTab == "📦 Модули" then
+        content = content .. "=== МОДУЛЬНЫЕ СКРИПТЫ ===\n\n"
+        for _, module in ipairs(ScannerData.Modules) do
+            content = content .. "📦 " .. module.Name .. "\n"
+            content = content .. "   Путь: " .. module.Path .. "\n\n"
+        end
+        
+    elseif CurrentTab == "⚙️ Настройки" then
+        content = content .. "=== НАСТРОЙКИ СКАНЕРА ===\n\n"
+        content = content .. "Автообновление: " .. (Config.AutoRefresh and "ВКЛ" or "ВЫКЛ") .. "\n"
+        content = content .. "Интервал обновления: " .. Config.RefreshInterval .. " сек\n"
+        content = content .. "Глубокое сканирование: " .. (Config.DeepScan and "ВКЛ" or "ВЫКЛ") .. "\n"
+        content = content .. "Логи в консоль: " .. (Config.LogToConsole and "ВКЛ" or "ВЫКЛ") .. "\n"
+        content = content .. "Сохранение в файл: " .. (Config.SaveToFile and "ВКЛ" or "ВЫКЛ") .. "\n"
     end
+    
+    OutputText.Text = content
+    OutputText.Size = UDim2.new(1, 0, 0, OutputText.TextBounds.Y + 20)
+    OutputScroller.CanvasSize = UDim2.new(0, 0, 0, OutputText.TextBounds.Y + 20)
 end
 
--- // AUTO FARM //
-
-local function GetQuestTarget()
-    local gui = Player:FindFirstChild("PlayerGui")
-    if gui and gui:FindFirstChild("Main") and gui.Main:FindFirstChild("Quest") and gui.Main.Quest.Visible then
-         local title = gui.Main.Quest.Container.QuestTitle.Title.Text
-         -- "Defeat 8 Bandits (0/8)" -> "Bandit"
-         -- Remove "Defeat", numbers, parens
-         local clean = title:gsub("Defeat", ""):gsub("%d+", ""):gsub("%(", ""):gsub("%)", ""):gsub("/", "")
-         -- Remove trailing "s" (Bandits -> Bandit) - simple heuristic
-         if clean:sub(-1) == "s" then clean = clean:sub(1, -2) end
-         -- Trim spaces
-         clean = clean:match("^%s*(.-)%s*$")
-         return clean
-    end
-    return nil
+function updateStatus(message, color)
+    StatusText.Text = message
+    StatusText.TextColor3 = color or Color3.fromRGB(0, 255, 0)
 end
 
-local function EquipWeapon()
-    local char = Player.Character
-    if not char then return end
+-- ==================== ОБРАБОТЧИКИ СОБЫТИЙ ====================
+ScanButton.MouseButton1Click:Connect(function()
+    updateStatus("Сканирование...", Color3.fromRGB(255, 255, 0))
     
-    -- Check if already equipped
-    local current = char:FindFirstChildOfClass("Tool")
-    if current and (current.ToolTip == "Melee" or current.ToolTip == "Sword") then return current end
-    
-    for _, t in pairs(Player.Backpack:GetChildren()) do
-        if t:IsA("Tool") and (t.ToolTip == "Melee" or t.ToolTip == "Sword" or t.Name == "Combat") then
-            char.Humanoid:EquipTool(t)
-            return t
-        end
-    end
-end
-
--- Optimized Mob Search
-local function FindNearestEnemy(targetName)
-    local enemies = Workspace:FindFirstChild("Enemies")
-    if not enemies then return nil end
-    
-    local hrp = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return nil end
-    
-    local bestMob = nil
-    local minDiv = math.huge
-    
-    for _, v in pairs(enemies:GetChildren()) do
-        if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
-            local isMatch = true
-            if targetName then
-                -- Case insensitive matching
-                local tName = string.lower(targetName)
-                local vName = string.lower(v.Name)
-                isMatch = string.find(vName, tName) or string.find(tName, vName)
-            end
-            
-            if isMatch then
-                local dist = (hrp.Position - v.HumanoidRootPart.Position).Magnitude
-                if dist < minDiv then
-                    minDiv = dist
-                    bestMob = v
-                end
-            end
-        end
-    end
-    return bestMob
-end
-
-task.spawn(function()
-    while true do
-        task.wait(0.1) -- Reduced frequency for stability
-        if _G.Settings.AutoFarm and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-            pcall(function()
-                -- 1. Auto Quest (Simplified)
-                if _G.Settings.AutoQuest then
-                    -- Trigger remote to take quest if not active
-                    -- (Specific to Blox Fruits logic, needs specific Remotes)
-                    -- For safety, we skip complex quest taking logic here to avoid errors
-                end
-                
-                -- 2. Target Logic
-                local questMobName = GetQuestTarget()
-                local target = State.CurrentTarget
-                
-                -- Force retarget if we have a quest and current target is not the quest mob
-                if questMobName then
-                     if target and not string.find(string.lower(target.Name), string.lower(questMobName)) then
-                         target = nil
-                     end
-                end
-                
-                if not target or not target.Parent or target.Humanoid.Health <= 0 then
-                    target = FindNearestEnemy(questMobName)
-                    State.CurrentTarget = target
-                end
-                
-                -- 3. Attack
-                if target then
-                    local hrp = Player.Character.HumanoidRootPart
-                    local tHrp = target.HumanoidRootPart
-                    local dist = (hrp.Position - tHrp.Position).Magnitude
-                    
-                    -- Fly to target if far away
-                    if dist > 350 then
-                        TeleportTo(tHrp.CFrame + Vector3.new(0, 50, 0))
-                        return -- Wait for arrival
-                    else
-                        -- Stop flying if close
-                        if State.IsTweening then
-                             for _, t in pairs(State.ActiveTweens) do t:Cancel() end
-                             State.ActiveTweens = {}
-                             State.IsTweening = false
-                        end
-                        
-                        -- Teleport to mob (above)
-                        hrp.CFrame = CFrame.lookAt(tHrp.Position + Vector3.new(0, 7, 0), tHrp.Position)
-                        hrp.Velocity = Vector3.zero
-                        
-                        -- Reach Aura
-                        if _G.Settings.ReachAura then
-                            tHrp.Size = Vector3.new(60, 60, 60)
-                            tHrp.Transparency = 0.5
-                            tHrp.CanCollide = false
-                        end
-                        
-                        -- Attack
-                        local weapon = EquipWeapon()
-                        if weapon then
-                            weapon:Activate()
-                            if _G.Settings.MobileAttackOnly then
-                                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                                task.wait(0.05)
-                                VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-                            else
-                                VirtualUser:CaptureController()
-                                VirtualUser:ClickButton1(Vector2.new(0,0), Workspace.CurrentCamera.CFrame)
-                            end
-                        end
-                    end
-                end
-            end)
-        end
-    end
-end)
-
--- // ESP & VISUALS //
-
--- Fruit ESP
-task.spawn(function()
-    while true do
-        task.wait(2) -- Scan every 2s
-        if _G.Settings.FruitESP or _G.Settings.AutoCollectFruit then
-            local fruits = {}
-            for _, v in pairs(Workspace:GetChildren()) do
-                if v:IsA("Tool") and (v.Name:find("Fruit") or v:FindFirstChild("Handle")) then
-                    table.insert(fruits, v)
-                end
-            end
-            
-            State.Fruits = fruits
-            
-            -- Draw ESP
-            if _G.Settings.FruitESP then
-                for _, f in pairs(fruits) do
-                    if f:FindFirstChild("Handle") and not f.Handle:FindFirstChild("FruitESP") then
-                        local b = Instance.new("BillboardGui")
-                        b.Name = "FruitESP"
-                        b.Adornee = f.Handle
-                        b.Size = UDim2.new(0, 200, 0, 50)
-                        b.AlwaysOnTop = true
-                        
-                        local t = Instance.new("TextLabel")
-                        t.Parent = b
-                        t.Size = UDim2.new(1,0,1,0)
-                        t.BackgroundTransparency = 1
-                        t.Text = f.Name
-                        t.TextColor3 = Color3.new(1, 0, 0)
-                        t.TextStrokeTransparency = 0
-                        b.Parent = f.Handle
-                    end
-                end
-            end
-            
-            -- Auto Collect
-            if _G.Settings.AutoCollectFruit and #fruits > 0 then
-                local f = fruits[1] -- Take first
-                if f and f:FindFirstChild("Handle") then
-                    Player.Character.HumanoidRootPart.CFrame = f.Handle.CFrame
-                end
-            end
-        end
-    end
-end)
-
--- Chest ESP (Optimized)
-task.spawn(function()
-    while true do
-        task.wait(3)
-        if _G.Settings.ChestESP or _G.Settings.AutoFarmChests then
-            -- Collect Chests
-            local chests = {}
-            -- Optimization: Only scan if we haven't recently or if count is low
-            -- For robust ESP we scan Workspace descendants but throttling is key
-            for _, v in pairs(Workspace:GetDescendants()) do
-                if v.Name:find("Chest") and (v:IsA("Part") or v:IsA("MeshPart")) then
-                    table.insert(chests, v)
-                end
-            end
-            State.Chests = chests
-            
-            if _G.Settings.ChestESP then
-                for _, c in pairs(chests) do
-                    if not c:FindFirstChild("ChestESP") then
-                        local b = Instance.new("BillboardGui")
-                        b.Name = "ChestESP"
-                        b.Adornee = c
-                        b.Size = UDim2.new(0, 100, 0, 30)
-                        b.AlwaysOnTop = true
-                        local t = Instance.new("TextLabel")
-                        t.Parent = b
-                        t.Size = UDim2.new(1,0,1,0)
-                        t.BackgroundTransparency = 1
-                        t.Text = "Chest"
-                        t.TextColor3 = Color3.fromRGB(255, 255, 0)
-                        t.TextStrokeTransparency = 0
-                        b.Parent = c
-                    end
-                end
-            end
-            
-            if _G.Settings.AutoFarmChests and #chests > 0 then
-                local c = chests[math.random(1, #chests)]
-                if c then
-                    Player.Character.HumanoidRootPart.CFrame = c.CFrame
-                    task.wait(1)
-                end
-            end
-        end
-    end
-end)
-
--- FPS Boost (One-time trigger + toggle)
-local function ApplyFPSBoost()
-    if not _G.Settings.FPSBoost then return end
-    
-    Lighting.GlobalShadows = false
-    Lighting.FogEnd = 9e9
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v:IsA("BasePart") and v.Material ~= Enum.Material.Plastic then
-            v.Material = Enum.Material.Plastic
-            v.Reflectance = 0
-        elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
-            v.Enabled = false
-        end
-    end
-end
-
--- // UI BUILDERS //
-
-local farmIdx = 0
-CreateSwitch(Frames["Farm"], farmIdx, "Auto Farm", "AutoFarm"); farmIdx = farmIdx + 1
-CreateSwitch(Frames["Farm"], farmIdx, "Auto Quest", "AutoQuest"); farmIdx = farmIdx + 1
-CreateSwitch(Frames["Farm"], farmIdx, "Hitbox Reach", "ReachAura"); farmIdx = farmIdx + 1
-CreateSwitch(Frames["Farm"], farmIdx, "Auto Elite", "AutoElite"); farmIdx = farmIdx + 1
-
-local fruitIdx = 0
-CreateSwitch(Frames["Fruit"], fruitIdx, "Fruit ESP", "FruitESP"); fruitIdx = fruitIdx + 1
-CreateSwitch(Frames["Fruit"], fruitIdx, "Auto Collect", "AutoCollectFruit"); fruitIdx = fruitIdx + 1
-CreateSwitch(Frames["Fruit"], fruitIdx, "Chest ESP", "ChestESP"); fruitIdx = fruitIdx + 1
-CreateSwitch(Frames["Fruit"], fruitIdx, "Auto Chests", "AutoFarmChests"); fruitIdx = fruitIdx + 1
-
-local setIdx = 0
-CreateSwitch(Frames["Settings"], setIdx, "FPS Boost", "FPSBoost", ApplyFPSBoost); setIdx = setIdx + 1
-CreateSwitch(Frames["Settings"], setIdx, "Mobile Attack", "MobileAttackOnly"); setIdx = setIdx + 1
-CreateSwitch(Frames["Settings"], setIdx, "Walk On Water", "WalkOnWater"); setIdx = setIdx + 1
-CreateSwitch(Frames["Settings"], setIdx, "Inf Geppo", "InfGeppo"); setIdx = setIdx + 1
-
-local islandIdx = 0
-for _, def in ipairs(IslandDefs) do
-    local btn = Instance.new("TextButton")
-    btn.Parent = Frames["Islands"]
-    btn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-    btn.Size = UDim2.new(0.9, 0, 0.10, 0)
-    btn.Position = UDim2.new(0.05, 0, 0.05 + islandIdx * 0.11, 0)
-    btn.Text = def.label
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 14
-    
-    local c = Instance.new("UICorner"); c.Parent = btn
-    
-    btn.Activated:Connect(function()
-        local cf = GetIslandCFrame(def)
-        if cf then TeleportTo(cf) end
+    local success, result = pcall(function()
+        return performScan()
     end)
-    islandIdx = islandIdx + 1
+    
+    if success then
+        updateStatus("Сканирование завершено!", Color3.fromRGB(0, 255, 0))
+        updateDisplay()
+    else
+        updateStatus("Ошибка: " .. result, Color3.fromRGB(255, 50, 50))
+    end
+end)
+
+CopyButton.MouseButton1Click:Connect(function()
+    if ScannerData then
+        local textToCopy = ""
+        
+        if CurrentTab == "📊 Обзор" then
+            textToCopy = "Данные игры: " .. ScannerData.GameName .. "\n"
+            textToCopy = textToCopy .. "RemoteEvents: " .. #ScannerData.Remotes.Events .. "\n"
+            textToCopy = textToCopy .. "Шаров найдено: " .. #ScannerData.Objects.Balls .. "\n"
+        else
+            textToCopy = OutputText.Text
+        end
+        
+        setclipboard(textToCopy)
+        updateStatus("Данные скопированы в буфер!", Color3.fromRGB(0, 200, 255))
+    else
+        updateStatus("Нет данных для копирования", Color3.fromRGB(255, 150, 0))
+    end
+end)
+
+-- ==================== АВТООБНОВЛЕНИЕ ====================
+if Config.AutoRefresh then
+    spawn(function()
+        while ScreenGui and ScreenGui.Parent do
+            wait(Config.RefreshInterval)
+            if Config.AutoRefresh then
+                performScan()
+                updateDisplay()
+                updateStatus("Автообновление: " .. os.date("%H:%M:%S"), Color3.fromRGB(150, 150, 255))
+            end
+        end
+    end)
 end
 
--- // EXTRAS //
+-- ==================== ИНИЦИАЛИЗАЦИЯ ====================
+updateDisplay()
 
--- Infinite Geppo
-UserInputService.JumpRequest:Connect(function()
-    if _G.Settings.InfGeppo and Player.Character then
-        local hum = Player.Character:FindFirstChild("Humanoid")
-        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
-    end
-end)
-
--- Walk On Water
-task.spawn(function()
-    local platform = Instance.new("Part")
-    platform.Name = "WaterWalker"
-    platform.Size = Vector3.new(20, 1, 20)
-    platform.Transparency = 1
-    platform.Anchored = true
-    platform.CanCollide = true
-    
-    while true do
-        task.wait(0.5)
-        if _G.Settings.WalkOnWater and Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = Player.Character.HumanoidRootPart
-            if hrp.Position.Y < 5 then -- Only near water level
-                platform.Parent = Workspace
-                platform.CFrame = CFrame.new(hrp.Position.X, hrp.Position.Y - 3.5, hrp.Position.Z)
-            end
-        else
-            platform.Parent = nil
-        end
-    end
-end)
-
-print("✅ Blox Fruits Script Optimized Loaded! Version:", _G.ScriptVersion)
+print("========================================")
+print("🔍 ERAFOX SCANNER v2.0 загружен!")
+print("🎯 Игра: " .. game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId).Name)
+print("👤 Игрок: " .. LocalPlayer.Name)
+print("========================================")
