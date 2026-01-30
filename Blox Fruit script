@@ -1,418 +1,818 @@
---[[
-    Erafox: Universal Scanner v5.2 (Mobile Fix)
-    
-    ИЗМЕНЕНИЯ v5.2:
-    1. ИСПРАВЛЕНИЕ ПУСТЫХ СПИСКОВ: Добавлен ручной пересчет CanvasSize (AutomaticCanvasSize глючит на телефонах).
-    2. КНОПКИ: Табы теперь используют UIListLayout, чтобы не слипались.
-    3. РАЗМЕР: Элементы списка увеличены (60px) для удобного нажатия пальцем.
-    4. ТЕКСТ: Весь текст теперь масштабируется (TextScaled), чтобы влезать на маленькие экраны.
-    5. GUI: ResetOnSpawn = false, чтобы меню не пропадало после смерти.
-]]
+-- Universal GUI Inspector v2.0 (Enhanced for Mobile)
+-- Оптимизирован для работы на Android/iOS устройствах
 
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Workspace = game:GetService("Workspace")
+local UIS = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
 
--- Настройки
-local Config = {
-    Theme = {
-        Main = Color3.fromRGB(25, 25, 35),
-        Secondary = Color3.fromRGB(35, 35, 45),
-        Accent = Color3.fromRGB(255, 140, 0), -- Оранжевый (Fox)
-        Text = Color3.fromRGB(240, 240, 240),
-        Success = Color3.fromRGB(100, 255, 100),
-        Error = Color3.fromRGB(255, 100, 100)
-    },
-    IsMobile = UserInputService.TouchEnabled
+local player = Players.LocalPlayer
+if not player then return end
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Удаляем старый инспектор
+local function safeDestroy(obj)
+    pcall(function() obj:Destroy() end)
+end
+
+pcall(function()
+    if playerGui:FindFirstChild("UniversalInspectorGUI") then
+        playerGui.UniversalInspectorGUI:Destroy()
+    end
+end)
+
+-- ==================== ОСНОВНЫЕ НАСТРОЙКИ ====================
+local SETTINGS = {
+    MAX_LOGS = 100,
+    HIGHLIGHT_DURATION = 1.2,
+    AUTO_SCROLL = true,
+    ENABLE_ANIMATIONS = true,
+    SHOW_PROPERTIES = true,
+    SHOW_HIERARCHY = true,
+    THEME = {
+        PRIMARY = Color3.fromRGB(30, 136, 229),
+        SECONDARY = Color3.fromRGB(40, 40, 40),
+        BACKGROUND = Color3.fromRGB(18, 18, 18),
+        TEXT = Color3.fromRGB(240, 240, 240),
+        SUCCESS = Color3.fromRGB(56, 142, 60),
+        WARNING = Color3.fromRGB(255, 193, 7),
+        ERROR = Color3.fromRGB(244, 67, 54)
+    }
 }
 
--- Библиотека UI
-local UI = {}
+-- ==================== УТИЛИТЫ ====================
+local Utils = {}
 
-function UI.Create(className, properties, children)
-    local instance = Instance.new(className)
-    for k, v in pairs(properties or {}) do
-        instance[k] = v
+function Utils.safeCall(func, ...)
+    local success, result = pcall(func, ...)
+    if not success then
+        warn("[Inspector Error]:", result)
+        return nil
     end
-    for _, child in pairs(children or {}) do
-        child.Parent = instance
-    end
-    return instance
+    return result
 end
 
--- Функция получения родителя для GUI (Cross-Executor Support)
-local function GetGuiParent()
-    -- 1. Пробуем gethui (современный стандарт)
-    if gethui then 
-        return gethui() 
-    end
+function Utils.getClipboardFunction()
+    -- Проверяем все возможные функции буфера обмена
+    local clipboardFuncs = {
+        setclipboard,
+        toclipboard,
+        writeclipboard,
+        syn and syn.write_clipboard,
+        fluxus and fluxus.write_clipboard,
+        Krnl and Krnl.write_clipboard,
+        getexecutor and getexecutor().WriteClipboard
+    }
     
-    -- 2. Пробуем CoreGui (если есть права)
-    local success, result = pcall(function() return game:GetService("CoreGui") end)
-    if success and result then 
-        return result 
+    for _, func in pairs(clipboardFuncs) do
+        if type(func) == "function" then
+            local success = pcall(func, "test")
+            if success then
+                return func
+            end
+        end
     end
-    
-    -- 3. Фолбэк на PlayerGui
-    local playerGui = LocalPlayer:WaitForChild("PlayerGui", 5)
-    if playerGui then
-        return playerGui
-    end
-    
-    return LocalPlayer:WaitForChild("PlayerGui")
+    return nil
 end
 
--- Создание ScreenGui
-local ParentTarget = GetGuiParent()
-print("Erafox: GUI Parent set to " .. tostring(ParentTarget))
-
--- Удаляем старую версию если есть
-for _, child in pairs(ParentTarget:GetChildren()) do
-    if child.Name == "ErafoxScannerV5" then child:Destroy() end
+function Utils.copyToClipboard(text)
+    local clipboardFunc = Utils.getClipboardFunction()
+    if clipboardFunc then
+        return Utils.safeCall(clipboardFunc, text)
+    end
+    return false
 end
 
-local ScreenGui = UI.Create("ScreenGui", {
-    Name = "ErafoxScannerV5",
-    Parent = ParentTarget,
-    ResetOnSpawn = false, -- ВАЖНО: Не удалять при респавне
-    ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-})
+function Utils.formatPath(obj)
+    if not obj or not obj:IsA("Instance") then return "Invalid Object" end
+    
+    local parts = {}
+    local current = obj
+    
+    while current and current ~= game do
+        table.insert(parts, 1, current.Name)
+        current = current.Parent
+    end
+    
+    if #parts == 0 then return "game" end
+    return table.concat(parts, ".")
+end
 
--- Кнопка открытия (БОЛЬШАЯ И ЗАМЕТНАЯ)
-local OpenBtn = UI.Create("TextButton", {
-    Name = "ErafoxOpen",
-    Text = "🦊",
-    Size = UDim2.new(0, 60, 0, 60), -- Большой размер для пальцев
-    Position = UDim2.new(0, 20, 0.4, 0),
-    BackgroundColor3 = Config.Theme.Main,
-    TextColor3 = Config.Theme.Accent,
-    TextScaled = true,
-    Parent = ScreenGui,
-    ZIndex = 100 -- Всегда сверху
-}, {
-    UI.Create("UICorner", {CornerRadius = UDim.new(1, 0)}),
-    UI.Create("UIStroke", {Color = Config.Theme.Accent, Thickness = 2})
-})
+function Utils.getObjectInfo(obj)
+    if not obj then return {} end
+    
+    local info = {
+        Name = obj.Name,
+        ClassName = obj.ClassName,
+        FullPath = Utils.formatPath(obj),
+        Parent = obj.Parent and obj.Parent.Name or "None"
+    }
+    
+    if obj:IsA("GuiObject") then
+        info.Position = string.format("(%.0f, %.0f)", obj.AbsolutePosition.X, obj.AbsolutePosition.Y)
+        info.Size = string.format("(%.0f × %.0f)", obj.AbsoluteSize.X, obj.AbsoluteSize.Y)
+        info.Visible = obj.Visible
+        info.Active = obj.Active
+        info.Selectable = obj.Selectable
+    end
+    
+    if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+        info.Text = string.sub(obj.Text, 1, 50)
+        info.TextSize = obj.TextSize
+        info.TextColor = obj.TextColor3
+    end
+    
+    if obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+        info.Image = obj.Image
+        info.ImageColor = obj.ImageColor3
+    end
+    
+    return info
+end
 
--- Главное окно
-local MainWindow = UI.Create("Frame", {
-    Name = "MainWindow",
-    Size = Config.IsMobile and UDim2.new(0.95, 0, 0.8, 0) or UDim2.new(0.5, 0, 0.6, 0),
-    Position = UDim2.new(0.5, 0, 0.5, 0),
-    AnchorPoint = Vector2.new(0.5, 0.5),
-    BackgroundColor3 = Config.Theme.Main,
-    BorderSizePixel = 0,
-    Visible = false, -- Скрыто по умолчанию
-    Parent = ScreenGui,
-    ClipsDescendants = true
-}, {
-    UI.Create("UICorner", {CornerRadius = UDim.new(0, 10)})
-})
+function Utils.formatInfoTable(info)
+    local lines = {}
+    table.insert(lines, "📋 ОБЪЕКТ ИНФОРМАЦИЯ:")
+    table.insert(lines, string.format("├─ Имя: %s", info.Name))
+    table.insert(lines, string.format("├─ Класс: %s", info.ClassName))
+    table.insert(lines, string.format("├─ Родитель: %s", info.Parent))
+    
+    if info.Position and info.Size then
+        table.insert(lines, string.format("├─ Позиция: %s", info.Position))
+        table.insert(lines, string.format("├─ Размер: %s", info.Size))
+    end
+    
+    if info.Text then
+        table.insert(lines, string.format("├─ Текст: \"%s\"", info.Text))
+    end
+    
+    if info.Image then
+        table.insert(lines, string.format("├─ Изображение: %s", info.Image))
+    end
+    
+    table.insert(lines, "└─ Полный путь:")
+    table.insert(lines, info.FullPath)
+    
+    return table.concat(lines, "\n")
+end
+
+-- ==================== GUI КОМПОНЕНТЫ ====================
+local GUI = {}
+
+-- Создание экрана
+GUI.Screen = Instance.new("ScreenGui")
+GUI.Screen.Name = "UniversalInspectorGUI"
+GUI.Screen.ResetOnSpawn = false
+GUI.Screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+GUI.Screen.Parent = playerGui
+
+-- Основной контейнер
+GUI.MainFrame = Instance.new("Frame")
+GUI.MainFrame.Name = "MainContainer"
+GUI.MainFrame.Size = UDim2.new(0.95, 0, 0.5, 0)
+GUI.MainFrame.Position = UDim2.new(0.025, 0, 0.25, 0)
+GUI.MainFrame.BackgroundColor3 = SETTINGS.THEME.BACKGROUND
+GUI.MainFrame.BackgroundTransparency = 0.1
+GUI.MainFrame.BorderSizePixel = 0
+GUI.MainFrame.Active = true
+GUI.MainFrame.Draggable = true
+GUI.MainFrame.Parent = GUI.Screen
+
+local corner = Instance.new("UICorner", GUI.MainFrame)
+corner.CornerRadius = UDim.new(0, 12)
+
+local stroke = Instance.new("UIStroke", GUI.MainFrame)
+stroke.Color = Color3.fromRGB(60, 60, 60)
+stroke.Thickness = 2
 
 -- Заголовок
-local TopBar = UI.Create("Frame", {
-    Size = UDim2.new(1, 0, 0, 40),
-    BackgroundColor3 = Config.Theme.Secondary,
-    Parent = MainWindow
-}, {
-    UI.Create("UICorner", {CornerRadius = UDim.new(0, 10)}),
-    UI.Create("TextLabel", {
-        Text = "  Erafox Scanner v5.2",
-        Size = UDim2.new(0.8, 0, 1, 0),
-        BackgroundTransparency = 1,
-        TextColor3 = Config.Theme.Accent,
-        TextSize = 18,
-        Font = Enum.Font.GothamBold,
-        TextXAlignment = Enum.TextXAlignment.Left
-    }),
-    UI.Create("TextButton", {
-        Text = "X",
-        Size = UDim2.new(0, 40, 0, 40),
-        Position = UDim2.new(1, -40, 0, 0),
-        BackgroundTransparency = 1,
-        TextColor3 = Config.Theme.Error,
-        TextSize = 20,
-        Font = Enum.Font.GothamBold
-    })
-})
+GUI.Title = Instance.new("TextLabel")
+GUI.Title.Name = "Title"
+GUI.Title.Size = UDim2.new(1, 0, 0, 40)
+GUI.Title.Position = UDim2.new(0, 0, 0, 0)
+GUI.Title.BackgroundColor3 = SETTINGS.THEME.SECONDARY
+GUI.Title.BackgroundTransparency = 0
+GUI.Title.Text = "🛠️ GUI INSPECTOR v2.0"
+GUI.Title.Font = Enum.Font.GothamBold
+GUI.Title.TextSize = 18
+GUI.Title.TextColor3 = SETTINGS.THEME.TEXT
+GUI.Title.TextXAlignment = Enum.TextXAlignment.Left
+GUI.Title.TextYAlignment = Enum.TextYAlignment.Center
+GUI.Title.PaddingLeft = UDim.new(0, 12)
+GUI.Title.Parent = GUI.MainFrame
 
--- Контейнер для вкладок
-local TabContainer = UI.Create("Frame", {
-    Size = UDim2.new(1, 0, 0, 45), -- Чуть выше для мобилок
-    Position = UDim2.new(0, 0, 0, 40),
-    BackgroundColor3 = Config.Theme.Main,
-    Parent = MainWindow
-}, {
-    UI.Create("UIListLayout", {
-        FillDirection = Enum.FillDirection.Horizontal,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 0)
-    })
-})
+local titleCorner = Instance.new("UICorner", GUI.Title)
+titleCorner.CornerRadius = UDim.new(0, 12)
 
--- Контейнер для контента
-local ContentContainer = UI.Create("Frame", {
-    Size = UDim2.new(1, 0, 1, -85),
-    Position = UDim2.new(0, 0, 0, 85),
-    BackgroundTransparency = 1,
-    Parent = MainWindow
-})
+-- Кнопка закрыть
+GUI.CloseButton = Instance.new("TextButton")
+GUI.CloseButton.Name = "CloseButton"
+GUI.CloseButton.Size = UDim2.new(0, 40, 0, 40)
+GUI.CloseButton.Position = UDim2.new(1, -40, 0, 0)
+GUI.CloseButton.BackgroundTransparency = 1
+GUI.CloseButton.Text = "✕"
+GUI.CloseButton.Font = Enum.Font.GothamBold
+GUI.CloseButton.TextSize = 20
+GUI.CloseButton.TextColor3 = SETTINGS.THEME.TEXT
+GUI.CloseButton.Parent = GUI.Title
 
--- Логика переключения вкладок
-local CurrentTab = nil
-local Tabs = {}
+-- Контейнер логов
+GUI.LogContainer = Instance.new("ScrollingFrame")
+GUI.LogContainer.Name = "LogContainer"
+GUI.LogContainer.Size = UDim2.new(1, -16, 1, -140)
+GUI.LogContainer.Position = UDim2.new(0, 8, 0, 48)
+GUI.LogContainer.BackgroundTransparency = 1
+GUI.LogContainer.ScrollBarThickness = 8
+GUI.LogContainer.ScrollBarImageColor3 = SETTINGS.THEME.SECONDARY
+GUI.LogContainer.CanvasSize = UDim2.new(0, 0, 0, 0)
+GUI.LogContainer.Parent = GUI.MainFrame
 
-local function SwitchTab(tabName)
-    if CurrentTab then CurrentTab.Frame.Visible = false end
-    if Tabs[tabName] then
-        Tabs[tabName].Frame.Visible = true
-        CurrentTab = Tabs[tabName]
+GUI.LogLayout = Instance.new("UIListLayout", GUI.LogContainer)
+GUI.LogLayout.SortOrder = Enum.SortOrder.Descending
+GUI.LogLayout.Padding = UDim.new(0, 6)
+
+-- Панель управления
+GUI.ControlPanel = Instance.new("Frame")
+GUI.ControlPanel.Name = "ControlPanel"
+GUI.ControlPanel.Size = UDim2.new(1, 0, 0, 80)
+GUI.ControlPanel.Position = UDim2.new(0, 0, 1, -80)
+GUI.ControlPanel.BackgroundTransparency = 1
+GUI.ControlPanel.Parent = GUI.MainFrame
+
+-- Кнопки управления
+local function createButton(name, text, color, position, width)
+    local btn = Instance.new("TextButton")
+    btn.Name = name
+    btn.Size = UDim2.new(width or 0.48, -6, 0, 36)
+    btn.Position = position
+    btn.BackgroundColor3 = color
+    btn.BackgroundTransparency = 0.1
+    btn.Text = text
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 14
+    btn.TextColor3 = SETTINGS.THEME.TEXT
+    btn.AutoButtonColor = true
+    btn.Parent = GUI.ControlPanel
+    
+    local btnCorner = Instance.new("UICorner", btn)
+    btnCorner.CornerRadius = UDim.new(0, 8)
+    
+    local btnStroke = Instance.new("UIStroke", btn)
+    btnStroke.Color = Color3.fromRGB(60, 60, 60)
+    btnStroke.Thickness = 1
+    
+    return btn
+end
+
+GUI.CopyPathBtn = createButton("CopyPath", "📋 Путь", SETTINGS.THEME.PRIMARY, UDim2.new(0, 8, 0, 0))
+GUI.CopyAllBtn = createButton("CopyAll", "📚 Все логи", SETTINGS.THEME.SECONDARY, UDim2.new(0.52, 0, 0, 0))
+GUI.ClearBtn = createButton("Clear", "🗑️ Очистить", SETTINGS.THEME.ERROR, UDim2.new(0, 8, 0, 44), 0.31)
+GUI.ExportBtn = createButton("Export", "📤 Экспорт", SETTINGS.THEME.SUCCESS, UDim2.new(0.34, 8, 0, 44), 0.31)
+GUI.SettingsBtn = createButton("Settings", "⚙️ Настройки", SETTINGS.THEME.WARNING, UDim2.new(0.68, 0, 0, 44), 0.31)
+
+-- Фолбек поле
+GUI.FallbackBox = Instance.new("TextBox")
+GUI.FallbackBox.Name = "FallbackBox"
+GUI.FallbackBox.Size = UDim2.new(1, -16, 0, 100)
+GUI.FallbackBox.Position = UDim2.new(0, 8, 1, -200)
+GUI.FallbackBox.BackgroundColor3 = SETTINGS.THEME.SECONDARY
+GUI.FallbackBox.BackgroundTransparency = 0.1
+GUI.FallbackBox.TextColor3 = SETTINGS.THEME.TEXT
+GUI.FallbackBox.TextWrapped = true
+GUI.FallbackBox.Font = Enum.Font.Gotham
+GUI.FallbackBox.TextSize = 13
+GUI.FallbackBox.Visible = false
+GUI.FallbackBox.ClearTextOnFocus = false
+GUI.FallbackBox.MultiLine = true
+GUI.FallbackBox.Parent = GUI.MainFrame
+
+local fallbackCorner = Instance.new("UICorner", GUI.FallbackBox)
+fallbackCorner.CornerRadius = UDim.new(0, 8)
+
+-- ==================== СИСТЕМА ЛОГИРОВАНИЯ ====================
+local LogSystem = {
+    Logs = {},
+    SelectedObject = nil,
+    HighlightData = {},
+    ConnectedEvents = {}
+}
+
+function LogSystem.addLog(obj)
+    if not obj or not obj:IsA("GuiObject") then return end
+    
+    local info = Utils.getObjectInfo(obj)
+    local formattedText = Utils.formatInfoTable(info)
+    local timestamp = os.date("%H:%M:%S")
+    
+    -- Создаем запись лога
+    local logEntry = {
+        Id = HttpService:GenerateGUID(false),
+        Timestamp = timestamp,
+        Object = obj,
+        Info = info,
+        FormattedText = formattedText,
+        RawData = info
+    }
+    
+    table.insert(LogSystem.Logs, 1, logEntry)
+    LogSystem.SelectedObject = obj
+    
+    -- Ограничиваем количество логов
+    if #LogSystem.Logs > SETTINGS.MAX_LOGS then
+        table.remove(LogSystem.Logs, SETTINGS.MAX_LOGS + 1)
+    end
+    
+    -- Обновляем UI
+    LogSystem.updateUI()
+    
+    -- Подсвечиваем объект
+    LogSystem.highlightObject(obj)
+    
+    return logEntry
+end
+
+function LogSystem.updateUI()
+    -- Очищаем старые элементы
+    for _, child in ipairs(GUI.LogContainer:GetChildren()) do
+        if child:IsA("Frame") then
+            child:Destroy()
+        end
+    end
+    
+    -- Создаем новые элементы логов
+    for i, log in ipairs(LogSystem.Logs) do
+        local logFrame = Instance.new("Frame")
+        logFrame.Name = "Log_" .. log.Id
+        logFrame.Size = UDim2.new(1, -8, 0, 0)
+        logFrame.BackgroundTransparency = 1
+        logFrame.AutomaticSize = Enum.AutomaticSize.Y
+        logFrame.Parent = GUI.LogContainer
+        
+        local bg = Instance.new("Frame")
+        bg.Name = "Background"
+        bg.Size = UDim2.new(1, 0, 0, 0)
+        bg.Position = UDim2.new(0, 0, 0, 0)
+        bg.BackgroundColor3 = i % 2 == 0 and Color3.fromRGB(30, 30, 30) or Color3.fromRGB(25, 25, 25)
+        bg.BackgroundTransparency = 0.3
+        bg.AutomaticSize = Enum.AutomaticSize.Y
+        bg.Parent = logFrame
+        
+        local corner = Instance.new("UICorner", bg)
+        corner.CornerRadius = UDim.new(0, 6)
+        
+        local content = Instance.new("TextLabel")
+        content.Name = "Content"
+        content.Size = UDim2.new(1, -16, 0, 0)
+        content.Position = UDim2.new(0, 8, 0, 8)
+        content.BackgroundTransparency = 1
+        content.Text = "[" .. log.Timestamp .. "]\n" .. log.FormattedText
+        content.TextColor3 = SETTINGS.THEME.TEXT
+        content.TextWrapped = true
+        content.TextXAlignment = Enum.TextXAlignment.Left
+        content.Font = Enum.Font.Gotham
+        content.TextSize = 13
+        content.AutomaticSize = Enum.AutomaticSize.Y
+        content.Parent = logFrame
+        
+        -- Кнопка выбора этого лога
+        local selectBtn = Instance.new("TextButton")
+        selectBtn.Name = "SelectButton"
+        selectBtn.Size = UDim2.new(1, 0, 1, 0)
+        selectBtn.Position = UDim2.new(0, 0, 0, 0)
+        selectBtn.BackgroundTransparency = 1
+        selectBtn.Text = ""
+        selectBtn.Parent = logFrame
+        
+        selectBtn.Activated:Connect(function()
+            LogSystem.selectLog(log)
+        end)
+    end
+    
+    -- Обновляем размер канваса
+    task.wait(0.1)
+    GUI.LogContainer.CanvasSize = UDim2.new(
+        0, 0, 
+        0, GUI.LogLayout.AbsoluteContentSize.Y + 20
+    )
+    
+    -- Автоскролл
+    if SETTINGS.AUTO_SCROLL then
+        GUI.LogContainer.CanvasPosition = Vector2.new(
+            0, 
+            GUI.LogContainer.CanvasSize.Y.Offset - GUI.LogContainer.AbsoluteSize.Y
+        )
     end
 end
 
-local function CreateTab(name, icon, layoutOrder)
-    -- Кнопка вкладки
-    local tabBtn = UI.Create("TextButton", {
-        Text = icon .. " " .. name,
-        Size = UDim2.new(0.2, 0, 1, 0), -- 5 вкладок = 20% каждая
-        BackgroundColor3 = Config.Theme.Secondary,
-        BackgroundTransparency = 0.5,
-        TextColor3 = Config.Theme.Text,
-        TextScaled = true, -- Масштабирование текста
-        Font = Enum.Font.Gotham,
-        Parent = TabContainer,
-        LayoutOrder = layoutOrder
-    })
+function LogSystem.selectLog(log)
+    if not log then return end
+    
+    LogSystem.SelectedObject = log.Object
+    
+    -- Копируем путь в буфер
+    if Utils.copyToClipboard(log.Info.FullPath) then
+        GUI.CopyPathBtn.Text = "✅ Скопировано!"
+        
+        if SETTINGS.ENABLE_ANIMATIONS then
+            local tween = TweenService:Create(
+                GUI.CopyPathBtn,
+                TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {BackgroundColor3 = SETTINGS.THEME.SUCCESS}
+            )
+            tween:Play()
+        end
+        
+        task.delay(1.5, function()
+            if GUI.CopyPathBtn then
+                GUI.CopyPathBtn.Text = "📋 Путь"
+                if SETTINGS.ENABLE_ANIMATIONS then
+                    local tween = TweenService:Create(
+                        GUI.CopyPathBtn,
+                        TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                        {BackgroundColor3 = SETTINGS.THEME.PRIMARY}
+                    )
+                    tween:Play()
+                end
+            end
+        end)
+    else
+        -- Показываем фолбек
+        GUI.FallbackBox.Text = log.Info.FullPath
+        GUI.FallbackBox.Visible = true
+        GUI.FallbackBox:CaptureFocus()
+    end
+    
+    -- Подсвечиваем объект
+    LogSystem.highlightObject(log.Object)
+end
 
-    -- Фрейм вкладки
-    local tabFrame = UI.Create("ScrollingFrame", {
-        Size = UDim2.new(1, -10, 1, -10),
-        Position = UDim2.new(0, 5, 0, 5),
-        BackgroundTransparency = 1,
-        ScrollBarThickness = 6,
-        Visible = false,
-        Parent = ContentContainer,
-        -- ВАЖНО: Отключаем AutomaticCanvasSize, считаем сами
-        CanvasSize = UDim2.new(0, 0, 0, 0) 
-    }, {
-        UI.Create("UIListLayout", {
-            SortOrder = Enum.SortOrder.LayoutOrder,
-            Padding = UDim.new(0, 5)
+function LogSystem.highlightObject(obj)
+    if not obj or not obj:IsA("GuiObject") then return end
+    
+    -- Сохраняем оригинальные свойства
+    if not LogSystem.HighlightData[obj] then
+        LogSystem.HighlightData[obj] = {
+            BackgroundColor3 = obj.BackgroundColor3,
+            BorderColor3 = obj.BorderColor3,
+            BorderSizePixel = obj.BorderSizePixel
+        }
+    end
+    
+    -- Применяем подсветку
+    if SETTINGS.ENABLE_ANIMATIONS then
+        local tween = TweenService:Create(
+            obj,
+            TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {
+                BackgroundColor3 = SETTINGS.THEME.PRIMARY,
+                BorderColor3 = Color3.fromRGB(255, 255, 255),
+                BorderSizePixel = 2
+            }
+        )
+        tween:Play()
+    else
+        obj.BackgroundColor3 = SETTINGS.THEME.PRIMARY
+        obj.BorderColor3 = Color3.fromRGB(255, 255, 255)
+        obj.BorderSizePixel = 2
+    end
+    
+    -- Возвращаем оригинальные свойства через время
+    task.delay(SETTINGS.HIGHLIGHT_DURATION, function()
+        if obj and obj.Parent then
+            local original = LogSystem.HighlightData[obj]
+            if original then
+                if SETTINGS.ENABLE_ANIMATIONS then
+                    local tween = TweenService:Create(
+                        obj,
+                        TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                        {
+                            BackgroundColor3 = original.BackgroundColor3,
+                            BorderColor3 = original.BorderColor3,
+                            BorderSizePixel = original.BorderSizePixel
+                        }
+                    )
+                    tween:Play()
+                else
+                    obj.BackgroundColor3 = original.BackgroundColor3
+                    obj.BorderColor3 = original.BorderColor3
+                    obj.BorderSizePixel = original.BorderSizePixel
+                end
+                LogSystem.HighlightData[obj] = nil
+            end
+        end
+    end)
+end
+
+function LogSystem.clearLogs()
+    LogSystem.Logs = {}
+    LogSystem.SelectedObject = nil
+    LogSystem.updateUI()
+    
+    if SETTINGS.ENABLE_ANIMATIONS then
+        GUI.ClearBtn.Text = "✅ Очищено!"
+        
+        local tween = TweenService:Create(
+            GUI.ClearBtn,
+            TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            {BackgroundColor3 = SETTINGS.THEME.SUCCESS}
+        )
+        tween:Play()
+        
+        task.delay(1.5, function()
+            if GUI.ClearBtn then
+                GUI.ClearBtn.Text = "🗑️ Очистить"
+                local tween = TweenService:Create(
+                    GUI.ClearBtn,
+                    TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    {BackgroundColor3 = SETTINGS.THEME.ERROR}
+                )
+                tween:Play()
+            end
+        end)
+    end
+end
+
+function LogSystem.exportLogs()
+    if #LogSystem.Logs == 0 then return end
+    
+    local exportData = {
+        timestamp = os.date("%Y-%m-%d %H:%M:%S"),
+        game = game.PlaceId,
+        totalLogs = #LogSystem.Logs,
+        logs = {}
+    }
+    
+    for i, log in ipairs(LogSystem.Logs) do
+        table.insert(exportData.logs, {
+            id = log.Id,
+            time = log.Timestamp,
+            object = log.Info.FullPath,
+            class = log.Info.ClassName,
+            data = log.RawData
         })
-    })
+    end
+    
+    local jsonString = HttpService:JSONEncode(exportData)
+    
+    if Utils.copyToClipboard(jsonString) then
+        GUI.ExportBtn.Text = "✅ Экспортировано!"
+        
+        if SETTINGS.ENABLE_ANIMATIONS then
+            local tween = TweenService:Create(
+                GUI.ExportBtn,
+                TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {BackgroundColor3 = SETTINGS.THEME.SUCCESS}
+            )
+            tween:Play()
+        end
+        
+        task.delay(1.5, function()
+            if GUI.ExportBtn then
+                GUI.ExportBtn.Text = "📤 Экспорт"
+                if SETTINGS.ENABLE_ANIMATIONS then
+                    local tween = TweenService:Create(
+                        GUI.ExportBtn,
+                        TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                        {BackgroundColor3 = SETTINGS.THEME.SUCCESS}
+                    )
+                    tween:Play()
+                end
+            end
+        end)
+    else
+        GUI.FallbackBox.Text = jsonString
+        GUI.FallbackBox.Visible = true
+        GUI.FallbackBox:CaptureFocus()
+    end
+end
 
-    Tabs[name] = {Button = tabBtn, Frame = tabFrame, Count = 0}
+-- ==================== СИСТЕМА СОБЫТИЙ ====================
+local EventSystem = {}
 
-    tabBtn.MouseButton1Click:Connect(function()
-        SwitchTab(name)
+function EventSystem.connectObject(obj)
+    if not obj or not obj:IsA("GuiObject") then return end
+    if LogSystem.ConnectedEvents[obj] then return end
+    
+    LogSystem.ConnectedEvents[obj] = true
+    
+    -- InputBegan для тача и мыши
+    local inputConnection = obj.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch or 
+           input.UserInputType == Enum.UserInputType.MouseButton1 then
+            LogSystem.addLog(obj)
+        end
     end)
     
-    return tabFrame
-end
-
--- Создаем вкладки
-local ExplorerTab = CreateTab("Explorer", "📁", 1)
-local RemoteTab = CreateTab("Remotes", "📡", 2)
-local PlayersTab = CreateTab("Players", "👤", 3)
-local WorldTab = CreateTab("World", "🌍", 4)
-local SettingsTab = CreateTab("Settings", "⚙️", 5)
-
--- Функция создания элемента списка (УЛУЧШЕННАЯ)
-local function CreateListItem(parent, title, desc, color, actionText, actionFunc)
-    -- Получаем текущий список
-    local layout = parent:FindFirstChild("UIListLayout")
-    
-    local item = UI.Create("Frame", {
-        Size = UDim2.new(1, 0, 0, 60), -- Увеличено до 60px для удобства
-        BackgroundColor3 = Config.Theme.Secondary,
-        Parent = parent
-    }, {
-        UI.Create("UICorner", {CornerRadius = UDim.new(0, 8)}),
-        UI.Create("Frame", { -- Индикатор цвета
-            Size = UDim2.new(0, 5, 1, 0),
-            BackgroundColor3 = color or Config.Theme.Text,
-            Parent = item
-        }, {UI.Create("UICorner", {CornerRadius = UDim.new(0, 4)})}),
-        
-        UI.Create("TextLabel", { -- Заголовок
-            Text = title,
-            Size = UDim2.new(0.65, -15, 0.5, 0),
-            Position = UDim2.new(0, 15, 0, 5),
-            BackgroundTransparency = 1,
-            TextColor3 = Config.Theme.Text,
-            TextScaled = true,
-            Font = Enum.Font.GothamBold,
-            TextXAlignment = Enum.TextXAlignment.Left
-        }),
-        
-        UI.Create("TextLabel", { -- Описание
-            Text = desc,
-            Size = UDim2.new(0.65, -15, 0.4, 0),
-            Position = UDim2.new(0, 15, 0.5, 0),
-            BackgroundTransparency = 1,
-            TextColor3 = Color3.fromRGB(150, 150, 150),
-            TextScaled = true,
-            Font = Enum.Font.Gotham,
-            TextXAlignment = Enum.TextXAlignment.Left
-        })
-    })
-    
-    if actionText and actionFunc then
-        local btn = UI.Create("TextButton", {
-            Text = actionText,
-            Size = UDim2.new(0.3, 0, 0.8, 0),
-            Position = UDim2.new(0.68, 0, 0.1, 0),
-            BackgroundColor3 = Config.Theme.Main,
-            TextColor3 = Config.Theme.Accent,
-            TextScaled = true,
-            Font = Enum.Font.GothamBold,
-            Parent = item
-        }, {UI.Create("UICorner", {CornerRadius = UDim.new(0, 6)})})
-        
-        btn.MouseButton1Click:Connect(actionFunc)
+    -- Для кнопок также отслеживаем Activated
+    if obj:IsA("TextButton") or obj:IsA("ImageButton") then
+        local activatedConnection = obj.Activated:Connect(function()
+            LogSystem.addLog(obj)
+        end)
     end
-    
-    -- ВРУЧНУЮ обновляем CanvasSize
-    local childCount = #parent:GetChildren() - 1 -- вычитаем layout
-    local newHeight = childCount * 65 -- 60px item + 5px padding
-    parent.CanvasSize = UDim2.new(0, 0, 0, newHeight)
-    
-    return item
 end
 
--- === ФУНКЦИОНАЛ ===
+function EventSystem.disconnectObject(obj)
+    if LogSystem.ConnectedEvents[obj] then
+        LogSystem.ConnectedEvents[obj] = nil
+    end
+end
 
--- 1. Explorer (Файловый менеджер)
-local CurrentPath = game
-local function RefreshExplorer()
-    ExplorerTab:ClearAllChildren()
-    UI.Create("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5)}, {Parent = ExplorerTab})
-    
-    -- Кнопка "Назад"
-    if CurrentPath ~= game then
-        CreateListItem(ExplorerTab, "..", "Go Back", Config.Theme.Accent, "Back", function()
-            if CurrentPath.Parent then
-                CurrentPath = CurrentPath.Parent
-                RefreshExplorer()
+-- Подключаем все существующие объекты
+for _, obj in ipairs(playerGui:GetDescendants()) do
+    if obj:IsA("GuiObject") then
+        EventSystem.connectObject(obj)
+    end
+end
+
+-- Подключаем новые объекты
+playerGui.DescendantAdded:Connect(function(desc)
+    if desc:IsA("GuiObject") then
+        EventSystem.connectObject(desc)
+    end
+end)
+
+-- Отключаем удаленные объекты
+playerGui.DescendantRemoving:Connect(function(desc)
+    if desc:IsA("GuiObject") then
+        EventSystem.disconnectObject(desc)
+    end
+end)
+
+-- Fallback: Используем GetGuiObjectsAtPosition
+UIS.InputBegan:Connect(function(input, processed)
+    if input.UserInputType == Enum.UserInputType.Touch and not processed then
+        local objects = playerGui:GetGuiObjectsAtPosition(input.Position.X, input.Position.Y)
+        if objects and #objects > 0 then
+            LogSystem.addLog(objects[1])
+        end
+    end
+end)
+
+-- ==================== ОБРАБОТКА КНОПОК ====================
+GUI.CopyPathBtn.Activated:Connect(function()
+    if LogSystem.SelectedObject then
+        local path = Utils.formatPath(LogSystem.SelectedObject)
+        if Utils.copyToClipboard(path) then
+            GUI.CopyPathBtn.Text = "✅ Скопировано!"
+            
+            if SETTINGS.ENABLE_ANIMATIONS then
+                local tween = TweenService:Create(
+                    GUI.CopyPathBtn,
+                    TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                    {BackgroundColor3 = SETTINGS.THEME.SUCCESS}
+                )
+                tween:Play()
             end
-        end)
-    end
-    
-    -- Сканируем детей (безопасно)
-    local children = {}
-    pcall(function() children = CurrentPath:GetChildren() end)
-    
-    for _, child in pairs(children) do
-        CreateListItem(ExplorerTab, child.Name, child.ClassName, Config.Theme.Text, "Open", function()
-            CurrentPath = child
-            RefreshExplorer()
-        end)
-    end
-    
-    -- Если пусто
-    if #children == 0 then
-         CreateListItem(ExplorerTab, "Empty", "No children found", Config.Theme.Error, nil, nil)
-    end
-end
-
--- 2. Remotes Scanner
-local function ScanRemotes()
-    RemoteTab:ClearAllChildren()
-    UI.Create("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5)}, {Parent = RemoteTab})
-    
-    local function SafeGetDescendants(obj)
-        local objects = {}
-        pcall(function() objects = obj:GetDescendants() end)
-        return objects
-    end
-    
-    local count = 0
-    local targets = {Workspace, game:GetService("ReplicatedStorage"), game:GetService("Players")}
-    
-    for _, service in pairs(targets) do
-        for _, v in pairs(SafeGetDescendants(service)) do
-            if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-                count = count + 1
-                CreateListItem(RemoteTab, v.Name, v.ClassName .. " | " .. (v.Parent and v.Parent.Name or "No Parent"), Config.Theme.Success, "Copy Path", function()
-                    if setclipboard then
-                        setclipboard(v:GetFullName())
+            
+            task.delay(1.5, function()
+                if GUI.CopyPathBtn then
+                    GUI.CopyPathBtn.Text = "📋 Путь"
+                    if SETTINGS.ENABLE_ANIMATIONS then
+                        local tween = TweenService:Create(
+                            GUI.CopyPathBtn,
+                            TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                            {BackgroundColor3 = SETTINGS.THEME.PRIMARY}
+                        )
+                        tween:Play()
                     end
-                end)
-            end
+                end
+            end)
+        else
+            GUI.FallbackBox.Text = path
+            GUI.FallbackBox.Visible = true
+            GUI.FallbackBox:CaptureFocus()
         end
-    end
-    
-    if count == 0 then
-        CreateListItem(RemoteTab, "No Remotes", "Scan found nothing", Config.Theme.Error)
-    end
-end
-
--- 3. Players Scanner
-local function ScanPlayers()
-    PlayersTab:ClearAllChildren()
-    UI.Create("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5)}, {Parent = PlayersTab})
-    
-    for _, plr in pairs(Players:GetPlayers()) do
-        local desc = "Health: ?"
-        if plr.Character and plr.Character:FindFirstChild("Humanoid") then
-            desc = "Health: " .. math.floor(plr.Character.Humanoid.Health)
-        end
-        
-        CreateListItem(PlayersTab, plr.Name, desc, Config.Theme.Accent, "Teleport", function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-                LocalPlayer.Character.HumanoidRootPart.CFrame = plr.Character.HumanoidRootPart.CFrame
-            end
-        end)
-    end
-end
-
--- Инициализация
-TopBar:WaitForChild("TextButton").MouseButton1Click:Connect(function()
-    MainWindow.Visible = false
-    OpenBtn.Visible = true
-end)
-
-OpenBtn.MouseButton1Click:Connect(function()
-    MainWindow.Visible = not MainWindow.Visible
-    -- При первом открытии обновляем данные
-    if MainWindow.Visible then
-        RefreshExplorer()
-        ScanRemotes()
-        ScanPlayers()
-    end
-end)
-
--- Поддержка перетаскивания кнопки
-local dragging, dragInput, dragStart, startPos
-OpenBtn.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = OpenBtn.Position
-        
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
+    else
+        GUI.FallbackBox.Text = "❌ Объект не выбран"
+        GUI.FallbackBox.Visible = true
+        task.delay(2, function()
+            if GUI.FallbackBox then
+                GUI.FallbackBox.Visible = false
             end
         end)
     end
 end)
 
-OpenBtn.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
+GUI.CopyAllBtn.Activated:Connect(function()
+    if #LogSystem.Logs == 0 then
+        GUI.FallbackBox.Text = "❌ Логи пусты"
+        GUI.FallbackBox.Visible = true
+        return
+    end
+    
+    local allText = ""
+    for i, log in ipairs(LogSystem.Logs) do
+        allText = allText .. "=" .. string.rep("=", 40) .. "=\n"
+        allText = allText .. log.FormattedText .. "\n\n"
+    end
+    
+    if Utils.copyToClipboard(allText) then
+        GUI.CopyAllBtn.Text = "✅ Скопировано!"
+        
+        if SETTINGS.ENABLE_ANIMATIONS then
+            local tween = TweenService:Create(
+                GUI.CopyAllBtn,
+                TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                {BackgroundColor3 = SETTINGS.THEME.SUCCESS}
+            )
+            tween:Play()
+        end
+        
+        task.delay(1.5, function()
+            if GUI.CopyAllBtn then
+                GUI.CopyAllBtn.Text = "📚 Все логи"
+                if SETTINGS.ENABLE_ANIMATIONS then
+                    local tween = TweenService:Create(
+                        GUI.CopyAllBtn,
+                        TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                        {BackgroundColor3 = SETTINGS.THEME.SECONDARY}
+                    )
+                    tween:Play()
+                end
+            end
+        end)
+    else
+        GUI.FallbackBox.Text = allText
+        GUI.FallbackBox.Visible = true
+        GUI.FallbackBox:CaptureFocus()
     end
 end)
 
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - dragStart
-        OpenBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+GUI.ClearBtn.Activated:Connect(function()
+    LogSystem.clearLogs()
+end)
+
+GUI.ExportBtn.Activated:Connect(function()
+    LogSystem.exportLogs()
+end)
+
+GUI.SettingsBtn.Activated:Connect(function()
+    -- Простая панель настроек
+    GUI.FallbackBox.Text = [[
+⚙️ НАСТРОЙКИ ИНСПЕКТОРА:
+├─ Макс. логов: ]] .. SETTINGS.MAX_LOGS .. [[
+├─ Подсветка: ]] .. (SETTINGS.HIGHLIGHT_DURATION .. " сек") .. [[
+├─ Анимации: ]] .. (SETTINGS.ENABLE_ANIMATIONS and "ВКЛ" or "ВЫКЛ") .. [[
+├─ Автоскролл: ]] .. (SETTINGS.AUTO_SCROLL and "ВКЛ" or "ВЫКЛ") .. [[
+└─ Всего логов: ]] .. #LogSystem.Logs .. [[
+
+Используйте кнопки выше для управления.]]
+    
+    GUI.FallbackBox.Visible = true
+    task.delay(5, function()
+        if GUI.FallbackBox then
+            GUI.FallbackBox.Visible = false
+        end
+    end)
+end)
+
+GUI.CloseButton.Activated:Connect(function()
+    GUI.Screen.Enabled = false
+end)
+
+-- Двойной тап по заголовку для скрытия/показа
+local lastTapTime = 0
+GUI.Title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Touch then
+        local currentTime = tick()
+        if currentTime - lastTapTime < 0.5 then
+            -- Двойной тап - скрыть/показать
+            GUI.MainFrame.Visible = not GUI.MainFrame.Visible
+        end
+        lastTapTime = currentTime
     end
 end)
 
--- Запуск
-SwitchTab("Explorer")
-print("Erafox Scanner v5.2 Loaded Successfully!")
+-- ==================== ИНИЦИАЛИЗАЦИЯ ====================
+-- Добавляем начальный лог
+LogSystem.addLog(GUI.MainFrame)
+
+-- Скрываем фолбек поле при клике вне его
+GUI.FallbackBox.FocusLost:Connect(function()
+    task.wait(0.5)
+    if GUI.FallbackBox then
+        GUI.FallbackBox.Visible = false
+    end
+end)
+
+print("✅ Universal GUI Inspector v2.0 загружен!")
+print("👆 Тапайте по любому UI элементу для инспекции")
+print("📋 Кнопка 'Путь' копирует путь выбранного объекта")
+
+-- Авто-обновление UI каждые 10 секунд для очистки памяти
+while task.wait(10) do
+    -- Очищаем подсветку для несуществующих объектов
+    for obj, _ in pairs(LogSystem.HighlightData) do
+        if not obj or not obj.Parent then
+            LogSystem.HighlightData[obj] = nil
+        end
+    end
+    
+    -- Очищаем события для несуществующих объектов
+    for obj, _ in pairs(LogSystem.ConnectedEvents) do
+        if not obj or not obj.Parent then
+            LogSystem.ConnectedEvents[obj] = nil
+        end
+    end
+end
