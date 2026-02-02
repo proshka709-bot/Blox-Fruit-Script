@@ -21,9 +21,23 @@ local RSS = {
         },
         GK = {
             AutoDive = false,
-            DiveDistance = 10.3,
-            DiveCooldown = 0.7,
-            SmartDive = true
+            DiveDistance = 18.0, 
+            DiveCooldown = 0.5, 
+            SmartDive = true,
+            -- New Features
+            AutoCatch = false,
+            CatchDistance = 10.0,
+            AntiRagdoll = false,
+            JumpBoost = false,
+            JumpBoostPower = 50,
+            AutoFace = false
+        },
+        Player = {
+            SpeedEnabled = false,
+            Speed = 20,
+            JumpEnabled = false,
+            Jump = 50,
+            InfJump = false
         },
         Prediction = {
             Enabled = false,
@@ -258,42 +272,70 @@ local function AutoDiveLoop()
     
     local root = GetRoot()
     if not root then return end
+
+    -- Auto Face
+    if RSS.Config.GK.AutoFace then
+        local lookPos = Vector3.new(ball.Position.X, root.Position.Y, ball.Position.Z)
+        root.CFrame = CFrame.lookAt(root.Position, lookPos)
+    end
+
+    -- Auto Catch
+    if RSS.Config.GK.AutoCatch then
+        local dist = (root.Position - ball.Position).Magnitude
+        if dist <= RSS.Config.GK.CatchDistance then
+            -- Try to activate tool
+            local char = LocalPlayer.Character
+            local tool = char and char:FindFirstChildOfClass("Tool")
+            if tool then 
+                tool:Activate() 
+            end
+            -- Also try mouse click for some games
+            if mouse1click then mouse1click() end
+        end
+    end
     
+    if not RSS.Config.GK.AutoDive then return end
+
     local now = tick()
     if now - lastDiveTime < RSS.Config.GK.DiveCooldown then return end
     
     local distance = (root.Position - ball.Position).Magnitude
     if distance > RSS.Config.GK.DiveDistance then return end
     
-    -- Smart Check: Is the ball actually moving towards us?
     local velocity = ball.AssemblyLinearVelocity
     local toBall = (ball.Position - root.Position).Unit
     local dot = velocity.Unit:Dot(toBall) 
-    
-    -- If dot is negative, ball is moving towards player (roughly). 
-    -- However, in soccer games, we often want to dive even if it's just near us.
-    -- Let's just stick to distance + side check for now, but refine the side check.
     
     local leftBtn, rightBtn = GetDiveButtons()
     if not leftBtn or not rightBtn then return end
     
     local relativePos = root.CFrame:PointToObjectSpace(ball.Position)
-    
-    -- Predict future position based on velocity for better accuracy
-    local predictedPos = relativePos + (root.CFrame:VectorToObjectSpace(velocity) * 0.2) -- 0.2s prediction
+    local predictedPos = relativePos + (root.CFrame:VectorToObjectSpace(velocity) * 0.3) -- 0.3s prediction
     
     if predictedPos.X < 0 then
         ClickButton(leftBtn)
     else
         ClickButton(rightBtn)
     end
+
+    -- Jump Boost
+    if RSS.Config.GK.JumpBoost then
+        local char = LocalPlayer.Character
+        local hum = char and char:FindFirstChild("Humanoid")
+        if hum and hum.RootPart then
+            hum.RootPart.Velocity = hum.RootPart.Velocity + Vector3.new(0, RSS.Config.GK.JumpBoostPower, 0)
+        end
+    end
+
     lastDiveTime = now
 end
 
 local function ToggleAutoDive(state)
     RSS.Config.GK.AutoDive = state
+    -- We need the loop running if ANY GK feature is on
+    local anyGkFeature = state or RSS.Config.GK.AutoCatch or RSS.Config.GK.AutoFace
     
-    if state then
+    if anyGkFeature then
         if not RSS.State.Connections.AutoDive then
             RSS.State.Connections.AutoDive = RunService.Heartbeat:Connect(AutoDiveLoop)
         end
@@ -301,6 +343,82 @@ local function ToggleAutoDive(state)
         if RSS.State.Connections.AutoDive then
             RSS.State.Connections.AutoDive:Disconnect()
             RSS.State.Connections.AutoDive = nil
+        end
+    end
+end
+
+-- Update Toggle Helper for other GK features
+local function UpdateGKLoop()
+    local anyGkFeature = RSS.Config.GK.AutoDive or RSS.Config.GK.AutoCatch or RSS.Config.GK.AutoFace
+    if anyGkFeature then
+        if not RSS.State.Connections.AutoDive then
+            RSS.State.Connections.AutoDive = RunService.Heartbeat:Connect(AutoDiveLoop)
+        end
+    else
+        if RSS.State.Connections.AutoDive then
+            RSS.State.Connections.AutoDive:Disconnect()
+            RSS.State.Connections.AutoDive = nil
+        end
+    end
+end
+
+--// Module: Player Features
+local function PlayerLoop()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    if not hum then return end
+
+    if RSS.Config.Player.SpeedEnabled then
+        hum.WalkSpeed = RSS.Config.Player.Speed
+    end
+    
+    if RSS.Config.Player.JumpEnabled then
+        hum.UseJumpPower = true
+        hum.JumpPower = RSS.Config.Player.Jump
+    end
+    
+    -- Anti-Ragdoll logic
+    if RSS.Config.GK.AntiRagdoll then
+        hum.PlatformStand = false
+        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+    end
+end
+
+local function TogglePlayerLoop(state)
+    -- If enabling either, make sure loop runs
+    if RSS.Config.Player.SpeedEnabled or RSS.Config.Player.JumpEnabled then
+        if not RSS.State.Connections.PlayerLoop then
+            RSS.State.Connections.PlayerLoop = RunService.Heartbeat:Connect(PlayerLoop)
+        end
+    else
+        -- If both disabled, stop loop
+        if RSS.State.Connections.PlayerLoop then
+            RSS.State.Connections.PlayerLoop:Disconnect()
+            RSS.State.Connections.PlayerLoop = nil
+        end
+    end
+end
+
+local function ToggleInfJump(state)
+    RSS.Config.Player.InfJump = state
+    
+    if state then
+        if not RSS.State.Connections.InfJump then
+            RSS.State.Connections.InfJump = game:GetService("UserInputService").JumpRequest:Connect(function()
+                if RSS.Config.Player.InfJump then
+                    local char = LocalPlayer.Character
+                    local hum = char and char:FindFirstChild("Humanoid")
+                    if hum then
+                        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                    end
+                end
+            end)
+        end
+    else
+        if RSS.State.Connections.InfJump then
+            RSS.State.Connections.InfJump:Disconnect()
+            RSS.State.Connections.InfJump = nil
         end
     end
 end
@@ -467,6 +585,7 @@ local Window = WindUI:CreateWindow({
 
 -- TABS
 local MainTab = Window:Tab({ Title = "Reach", Icon = "target" })
+local PlayerTab = Window:Tab({ Title = "Player", Icon = "user" })
 local GkTab = Window:Tab({ Title = "GK Features", Icon = "shield" })
 local StaminaTab = Window:Tab({ Title = "Stamina", Icon = "zap" })
 local PredictTab = Window:Tab({ Title = "Predictor", Icon = "activity" })
@@ -519,6 +638,51 @@ ReachSection:Slider({
     end
 })
 
+-- [Player Tab]
+local PlayerSection = PlayerTab:Section({ Title = "Movement" })
+
+PlayerSection:Toggle({
+    Title = "Enable Speed",
+    Default = false,
+    Callback = function(v)
+        RSS.Config.Player.SpeedEnabled = v
+        TogglePlayerLoop(v)
+    end
+})
+
+PlayerSection:Slider({
+    Title = "WalkSpeed",
+    Step = 1,
+    Value = { Min = 16, Max = 100, Default = 20 },
+    Callback = function(v)
+        RSS.Config.Player.Speed = v
+    end
+})
+
+PlayerSection:Toggle({
+    Title = "Enable Jump",
+    Default = false,
+    Callback = function(v)
+        RSS.Config.Player.JumpEnabled = v
+        TogglePlayerLoop(v)
+    end
+})
+
+PlayerSection:Slider({
+    Title = "JumpPower",
+    Step = 1,
+    Value = { Min = 50, Max = 200, Default = 50 },
+    Callback = function(v)
+        RSS.Config.Player.Jump = v
+    end
+})
+
+PlayerSection:Toggle({
+    Title = "Infinite Jump",
+    Default = false,
+    Callback = ToggleInfJump
+})
+
 -- [GK Tab]
 local GKSection = GkTab:Section({ Title = "Auto Features" })
 
@@ -527,6 +691,49 @@ GKSection:Toggle({
     Desc = "Attempts to dive when ball is near (Beta)",
     Default = false,
     Callback = ToggleAutoDive
+})
+
+GKSection:Toggle({
+    Title = "Auto Catch",
+    Default = false,
+    Callback = function(v)
+        RSS.Config.GK.AutoCatch = v
+        UpdateGKLoop()
+    end
+})
+
+GKSection:Toggle({
+    Title = "Auto Face Ball",
+    Default = false,
+    Callback = function(v)
+        RSS.Config.GK.AutoFace = v
+        UpdateGKLoop()
+    end
+})
+
+GKSection:Toggle({
+    Title = "Anti-Ragdoll/Stun",
+    Default = false,
+    Callback = function(v)
+        RSS.Config.GK.AntiRagdoll = v
+    end
+})
+
+GKSection:Toggle({
+    Title = "Jump Boost on Dive",
+    Default = false,
+    Callback = function(v)
+        RSS.Config.GK.JumpBoost = v
+    end
+})
+
+GKSection:Slider({
+    Title = "Dive Distance",
+    Step = 1,
+    Value = { Min = 10, Max = 30, Default = 18 },
+    Callback = function(v)
+        RSS.Config.GK.DiveDistance = v
+    end
 })
 
 GKSection:Dropdown({
