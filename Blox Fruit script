@@ -1,5 +1,5 @@
 local RSS = {
-    Version = "2.1.0",
+    Version = "2.2.0",
     Author = "VETA (Refactored)",
     Services = {
         Players = game:GetService("Players"),
@@ -10,6 +10,11 @@ local RSS = {
         UserInputService = game:GetService("UserInputService")
     },
     Config = {
+        SmartMode = {
+            Enabled = false,
+            CurrentRole = "None", -- GK, Striker, None
+            LastCheck = 0
+        },
         Reach = {
             Enabled = false,
             Distance = 10,
@@ -653,240 +658,187 @@ local function TogglePredictor(state)
     end
 end
 
+--// Module: Smart Mode (Auto Config)
+local function CheckRole()
+    local role = "Striker" -- Default
+    
+    if LocalPlayer.Team then
+        local tName = LocalPlayer.Team.Name:lower()
+        if tName:find("spec") or tName:find("lobby") or tName:find("neutral") or tName:find("hub") then
+            return "Lobby"
+        elseif tName:find("gk") or tName:find("goalie") or tName:find("keeper") then
+            return "GK"
+        end
+    end
+    
+    -- Check Tools (Backup for GK)
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        for _, t in ipairs(backpack:GetChildren()) do
+            local name = t.Name:lower()
+            if name:find("save") or name:find("catch") or name:find("gloves") then
+                return "GK"
+            end
+        end
+    end
+    
+    return role
+end
+
+local function SmartModeLoop()
+    if not RSS.Config.SmartMode.Enabled then return end
+    
+    local now = tick()
+    if now - RSS.Config.SmartMode.LastCheck < 5 then return end -- Check every 5s
+    RSS.Config.SmartMode.LastCheck = now
+    
+    local newRole = CheckRole()
+    if newRole ~= RSS.Config.SmartMode.CurrentRole then
+        RSS.Config.SmartMode.CurrentRole = newRole
+        
+        if newRole == "GK" then
+            -- [GK MODE]
+            ToggleAutoDive(true)
+            RSS.Config.GK.AutoCatch = true
+            RSS.Config.GK.AutoFace = true
+            RSS.Config.GK.JumpBoost = true
+            UpdateGKLoop()
+            
+            -- Disable Striker movements to prevent physics bugs
+            TogglePlayerLoop(false) 
+            
+            if WindUI and WindUI.Notify then
+                WindUI:Notify({ Title = "Smart Mode", Content = "Role: Goalkeeper (Auto-Dive Enabled)", Duration = 3 })
+            end
+            
+        elseif newRole == "Lobby" then
+            -- [LOBBY MODE]
+            ToggleAutoDive(false)
+            TogglePlayerLoop(false)
+            ToggleReach(false)
+            
+            if WindUI and WindUI.Notify then
+                WindUI:Notify({ Title = "Smart Mode", Content = "Role: Lobby (Features Paused)", Duration = 3 })
+            end
+            
+        else
+            -- [STRIKER MODE]
+            ToggleAutoDive(false)
+            RSS.Config.GK.AutoCatch = false
+            UpdateGKLoop()
+            
+            -- Optional: Auto-enable speed if preferred, but safer to leave manual control or just enable basic boost
+            -- TogglePlayerLoop(true) 
+            
+            if WindUI and WindUI.Notify then
+                WindUI:Notify({ Title = "Smart Mode", Content = "Role: Striker (GK Features Disabled)", Duration = 3 })
+            end
+        end
+    end
+end
+
+local function ToggleSmartMode(state)
+    RSS.Config.SmartMode.Enabled = state
+    if state then
+        if not RSS.State.Connections.SmartMode then
+            RSS.State.Connections.SmartMode = RunService.Heartbeat:Connect(SmartModeLoop)
+        end
+        -- Force immediate check
+        RSS.Config.SmartMode.LastCheck = 0 
+    else
+        if RSS.State.Connections.SmartMode then
+            RSS.State.Connections.SmartMode:Disconnect()
+            RSS.State.Connections.SmartMode = nil
+        end
+        RSS.Config.SmartMode.CurrentRole = "None"
+    end
+end
+
+
 --// UI Setup (WindUI)
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/dist/main.lua"))()
 
 local Window = WindUI:CreateWindow({
-    Title = "RSS - VETA [Refactored]",
+    Title = "RSS - VETA [Smart Edition]",
     Icon = "rbxassetid://106211849494703",
     Author = "VETA",
     Folder = "RSSVETA"
 })
 
--- TABS
-local MainTab = Window:Tab({ Title = "Reach", Icon = "target" })
-local PlayerTab = Window:Tab({ Title = "Player", Icon = "user" })
-local GkTab = Window:Tab({ Title = "GK Features", Icon = "shield" })
+-- TABS (Organized "On Shelves")
+local DashboardTab = Window:Tab({ Title = "Dashboard", Icon = "home" })
+local GkTab = Window:Tab({ Title = "Goalkeeper", Icon = "shield" })
+local PlayerTab = Window:Tab({ Title = "Striker", Icon = "user" })
 local MobileTab = Window:Tab({ Title = "Mobile", Icon = "phone" })
-local StaminaTab = Window:Tab({ Title = "Stamina", Icon = "zap" })
-local PredictTab = Window:Tab({ Title = "Predictor", Icon = "activity" })
+local VisualsTab = Window:Tab({ Title = "Visuals", Icon = "image" })
 
--- SECTIONS & ELEMENTS
-
--- [Main Tab]
-local ReachSection = MainTab:Section({ Title = "Hitbox & Reach" })
-
-ReachSection:Toggle({
-    Title = "Enable Reach",
+-- [1. Dashboard Tab]
+local SmartSection = DashboardTab:Section({ Title = "Smart Automation" })
+SmartSection:Toggle({
+    Title = "Enable Smart Mode",
+    Desc = "Auto-detects GK role and enables features",
     Default = false,
-    Callback = ToggleReach
+    Callback = ToggleSmartMode
 })
 
-ReachSection:Toggle({
-    Title = "Visualizer",
-    Default = false,
-    Callback = function(v)
-        RSS.Config.Reach.Visualizer = v
-        UpdateVisualizer()
+local MainSection = DashboardTab:Section({ Title = "Quick Controls" })
+MainSection:Button({
+    Title = "Panic Button",
+    Desc = "Disable All Features Immediately",
+    Callback = function()
+        ToggleSmartMode(false)
+        ToggleReach(false)
+        ToggleAutoDive(false)
+        ToggleStamina(false)
+        TogglePredictor(false)
+        TogglePlayerLoop(false)
+        ToggleMobileControls(false)
+        WindUI:Notify({ Title = "Panic", Content = "All Features Disabled", Duration = 2 })
     end
 })
 
-ReachSection:Slider({
-    Title = "Hitbox Size X",
-    Step = 1,
-    Value = { Min = 1, Max = 50, Default = 10 },
-    Callback = function(v)
-        RSS.Config.Reach.HitboxSize = Vector3.new(v, RSS.Config.Reach.HitboxSize.Y, RSS.Config.Reach.HitboxSize.Z)
-        UpdateVisualizer()
-    end
-})
-ReachSection:Slider({
-    Title = "Hitbox Size Y",
-    Step = 1,
-    Value = { Min = 1, Max = 50, Default = 10 },
-    Callback = function(v)
-        RSS.Config.Reach.HitboxSize = Vector3.new(RSS.Config.Reach.HitboxSize.X, v, RSS.Config.Reach.HitboxSize.Z)
-        UpdateVisualizer()
-    end
-})
-ReachSection:Slider({
-    Title = "Hitbox Size Z",
-    Step = 1,
-    Value = { Min = 1, Max = 50, Default = 10 },
-    Callback = function(v)
-        RSS.Config.Reach.HitboxSize = Vector3.new(RSS.Config.Reach.HitboxSize.X, RSS.Config.Reach.HitboxSize.Y, v)
-        UpdateVisualizer()
-    end
-})
+-- [2. Goalkeeper Tab]
+local AutoSection = GkTab:Section({ Title = "Auto Reactions" })
+AutoSection:Toggle({ Title = "Auto Dive", Desc = "Dives automatically", Default = false, Callback = ToggleAutoDive })
+AutoSection:Toggle({ Title = "Auto Catch", Desc = "Catches automatically", Default = false, Callback = function(v) RSS.Config.GK.AutoCatch = v UpdateGKLoop() end })
+AutoSection:Toggle({ Title = "Auto Face Ball", Default = false, Callback = function(v) RSS.Config.GK.AutoFace = v UpdateGKLoop() end })
 
--- [Player Tab]
-local PlayerSection = PlayerTab:Section({ Title = "Movement" })
+local AbilitySection = GkTab:Section({ Title = "Abilities" })
+AbilitySection:Toggle({ Title = "Ball Magnet", Desc = "Pulls ball (Risky)", Default = false, Callback = ToggleMagnet })
+AbilitySection:Slider({ Title = "Magnet Range", Step = 1, Value = { Min = 10, Max = 50, Default = 25 }, Callback = function(v) RSS.Config.GK.MagnetRange = v end })
+AbilitySection:Toggle({ Title = "Anti-Ragdoll", Default = false, Callback = function(v) RSS.Config.GK.AntiRagdoll = v end })
+AbilitySection:Toggle({ Title = "Jump Boost on Dive", Default = false, Callback = function(v) RSS.Config.GK.JumpBoost = v end })
 
-PlayerSection:Toggle({
-    Title = "Enable Speed",
-    Default = false,
-    Callback = function(v)
-        RSS.Config.Player.SpeedEnabled = v
-        TogglePlayerLoop(v)
-    end
-})
+local SettingsSection = GkTab:Section({ Title = "Settings" })
+SettingsSection:Slider({ Title = "Dive Distance", Step = 1, Value = { Min = 10, Max = 30, Default = 18 }, Callback = function(v) RSS.Config.GK.DiveDistance = v end })
 
-PlayerSection:Slider({
-    Title = "WalkSpeed",
-    Step = 1,
-    Value = { Min = 16, Max = 100, Default = 20 },
-    Callback = function(v)
-        RSS.Config.Player.Speed = v
-    end
-})
+-- [3. Striker Tab]
+local ReachSection = PlayerTab:Section({ Title = "Reach / Hitbox" })
+ReachSection:Toggle({ Title = "Enable Reach", Default = false, Callback = ToggleReach })
+ReachSection:Slider({ Title = "Hitbox Size X", Step = 1, Value = { Min = 1, Max = 50, Default = 10 }, Callback = function(v) RSS.Config.Reach.HitboxSize = Vector3.new(v, RSS.Config.Reach.HitboxSize.Y, RSS.Config.Reach.HitboxSize.Z) UpdateVisualizer() end })
+ReachSection:Slider({ Title = "Hitbox Size Y", Step = 1, Value = { Min = 1, Max = 50, Default = 10 }, Callback = function(v) RSS.Config.Reach.HitboxSize = Vector3.new(RSS.Config.Reach.HitboxSize.X, v, RSS.Config.Reach.HitboxSize.Z) UpdateVisualizer() end })
+ReachSection:Slider({ Title = "Hitbox Size Z", Step = 1, Value = { Min = 1, Max = 50, Default = 10 }, Callback = function(v) RSS.Config.Reach.HitboxSize = Vector3.new(RSS.Config.Reach.HitboxSize.X, RSS.Config.Reach.HitboxSize.Y, v) UpdateVisualizer() end })
 
-PlayerSection:Toggle({
-    Title = "Enable Jump",
-    Default = false,
-    Callback = function(v)
-        RSS.Config.Player.JumpEnabled = v
-        TogglePlayerLoop(v)
-    end
-})
+local MoveSection = PlayerTab:Section({ Title = "Movement" })
+MoveSection:Toggle({ Title = "Enable Speed", Default = false, Callback = function(v) RSS.Config.Player.SpeedEnabled = v TogglePlayerLoop(v) end })
+MoveSection:Slider({ Title = "WalkSpeed", Step = 1, Value = { Min = 16, Max = 100, Default = 20 }, Callback = function(v) RSS.Config.Player.Speed = v end })
+MoveSection:Toggle({ Title = "Enable Jump", Default = false, Callback = function(v) RSS.Config.Player.JumpEnabled = v TogglePlayerLoop(v) end })
+MoveSection:Slider({ Title = "JumpPower", Step = 1, Value = { Min = 50, Max = 200, Default = 50 }, Callback = function(v) RSS.Config.Player.Jump = v end })
+MoveSection:Toggle({ Title = "Infinite Jump", Default = false, Callback = ToggleInfJump })
 
-PlayerSection:Slider({
-    Title = "JumpPower",
-    Step = 1,
-    Value = { Min = 50, Max = 200, Default = 50 },
-    Callback = function(v)
-        RSS.Config.Player.Jump = v
-    end
-})
+-- [4. Mobile Tab]
+local MobSection = MobileTab:Section({ Title = "Controls" })
+MobSection:Toggle({ Title = "On-Screen Buttons", Desc = "Show Dive/Jump UI", Default = false, Callback = ToggleMobileControls })
+MobSection:Toggle({ Title = "FPS Boost", Desc = "Optimize Graphics", Default = false, Callback = ToggleFPSBoost })
 
-PlayerSection:Toggle({
-    Title = "Infinite Jump",
-    Default = false,
-    Callback = ToggleInfJump
-})
-
--- [GK Tab]
-local GKSection = GkTab:Section({ Title = "Auto Features" })
-
-GKSection:Toggle({
-    Title = "Auto Dive",
-    Desc = "Attempts to dive when ball is near (Beta)",
-    Default = false,
-    Callback = ToggleAutoDive
-})
-
-GKSection:Toggle({
-    Title = "Auto Catch",
-    Default = false,
-    Callback = function(v)
-        RSS.Config.GK.AutoCatch = v
-        UpdateGKLoop()
-    end
-})
-
-GKSection:Toggle({
-    Title = "Auto Face Ball",
-    Default = false,
-    Callback = function(v)
-        RSS.Config.GK.AutoFace = v
-        UpdateGKLoop()
-    end
-})
-
-GKSection:Toggle({
-    Title = "Ball Magnet",
-    Desc = "Pulls ball towards you (Risky/Beta)",
-    Default = false,
-    Callback = ToggleMagnet
-})
-
-GKSection:Slider({
-    Title = "Magnet Range",
-    Step = 1,
-    Value = { Min = 10, Max = 50, Default = 25 },
-    Callback = function(v)
-        RSS.Config.GK.MagnetRange = v
-    end
-})
-
-GKSection:Toggle({
-    Title = "Anti-Ragdoll/Stun",
-    Default = false,
-    Callback = function(v)
-        RSS.Config.GK.AntiRagdoll = v
-    end
-})
-
-GKSection:Toggle({
-    Title = "Jump Boost on Dive",
-    Default = false,
-    Callback = function(v)
-        RSS.Config.GK.JumpBoost = v
-    end
-})
-
-GKSection:Slider({
-    Title = "Dive Distance",
-    Step = 1,
-    Value = { Min = 10, Max = 30, Default = 18 },
-    Callback = function(v)
-        RSS.Config.GK.DiveDistance = v
-    end
-})
-
-GKSection:Dropdown({
-    Title = "Quick Team",
-    Values = {"Home GK", "Away GK"},
-    Multi = false,
-    Callback = function(v)
-        if not v then return end
-        local args = nil
-        if v == "Home GK" then
-            args = {BrickColor.new(23), "Goalie"}
-        elseif v == "Away GK" then
-            args = {BrickColor.new(141), "Goalie"}
-        end
-        
-        if args then
-             ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("TeamChange"):FireServer(unpack(args))
-        end
-    end
-})
-
--- [Mobile Tab]
-local MobileSection = MobileTab:Section({ Title = "Mobile Controls" })
-
-MobileSection:Toggle({
-    Title = "On-Screen Controls",
-    Desc = "Show Dive/Jump buttons",
-    Default = false,
-    Callback = ToggleMobileControls
-})
-
-MobileSection:Toggle({
-    Title = "FPS Boost",
-    Desc = "Lowers graphics for performance",
-    Default = false,
-    Callback = ToggleFPSBoost
-})
-
--- [Stamina Tab]
-local StaminaSection = StaminaTab:Section({ Title = "Settings" })
-StaminaSection:Toggle({
-    Title = "Infinite Stamina",
-    Default = false,
-    Callback = ToggleStamina
-})
-
--- [Predictor Tab]
-local PredictSection = PredictTab:Section({ Title = "Ball Trajectory" })
-PredictSection:Toggle({
-    Title = "Enable Predictor",
-    Default = false,
-    Callback = TogglePredictor
-})
+-- [5. Visuals Tab]
+local VisSection = VisualsTab:Section({ Title = "Indicators" })
+VisSection:Toggle({ Title = "Hitbox Visualizer", Default = false, Callback = function(v) RSS.Config.Reach.Visualizer = v UpdateVisualizer() end })
+VisSection:Toggle({ Title = "Ball Predictor", Desc = "Show Trajectory", Default = false, Callback = TogglePredictor })
+VisSection:Toggle({ Title = "Infinite Stamina", Default = false, Callback = ToggleStamina })
 
 WindUI:Notify({
     Title = "Loaded",
-    Content = "RSS Refactored Loaded Successfully",
+    Content = "RSS Smart Edition Loaded",
     Duration = 5
 })
