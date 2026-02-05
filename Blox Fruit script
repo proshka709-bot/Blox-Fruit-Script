@@ -1,6 +1,6 @@
 --[[
     VETA HUB - BLOX FRUITS GOD MODE
-    Version: 5.0 (Custom UI Edition)
+    Version: 5.5 (Fixed UI + Infinite Range)
     Author: VETA AI
 ]]
 
@@ -43,6 +43,49 @@ function Library:CreateWindow(name)
     ScreenGui.Parent = Viewport
     ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
+    -- Open/Close Button (Mobile Friendly)
+    local OpenBtn = Instance.new("TextButton")
+    OpenBtn.Name = "OpenButton"
+    OpenBtn.Parent = ScreenGui
+    OpenBtn.BackgroundColor3 = UIConfig.MainColor
+    OpenBtn.Position = UDim2.new(0.1, 0, 0.1, 0)
+    OpenBtn.Size = UDim2.new(0, 50, 0, 50)
+    OpenBtn.Font = Enum.Font.GothamBlack
+    OpenBtn.Text = "V"
+    OpenBtn.TextColor3 = Color3.new(1,1,1)
+    OpenBtn.TextSize = 24
+    
+    local OpenCorner = Instance.new("UICorner")
+    OpenCorner.CornerRadius = UDim.new(1, 0) -- Circle
+    OpenCorner.Parent = OpenBtn
+    
+    -- Draggable Open Button
+    local dragging, dragInput, dragStart, startPos
+    OpenBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = OpenBtn.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    OpenBtn.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            OpenBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
     local MainFrame = Instance.new("Frame")
     MainFrame.Name = "MainFrame"
     MainFrame.Parent = ScreenGui
@@ -55,7 +98,45 @@ function Library:CreateWindow(name)
     UICorner.CornerRadius = UIConfig.CornerRadius
     UICorner.Parent = MainFrame
     
-    -- Dragging
+    -- Opening Animation
+    MainFrame.Size = UDim2.new(0, 0, 0, 0)
+    MainFrame.Visible = false
+    
+    local isMinimised = true
+    
+    local function ToggleUI()
+        if isMinimised then
+            MainFrame.Visible = true
+            Library:Tween(MainFrame, {Size = UDim2.new(0, 600, 0, 400)}, 0.5)
+            isMinimised = false
+        else
+            Library:Tween(MainFrame, {Size = UDim2.new(0, 0, 0, 0)}, 0.5)
+            task.wait(0.5)
+            if isMinimised then MainFrame.Visible = false end -- Check again in case spammed
+            isMinimised = true
+        end
+    end
+    
+    OpenBtn.MouseButton1Click:Connect(ToggleUI)
+    
+    -- Close Button inside UI
+    local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Parent = MainFrame
+    CloseBtn.BackgroundTransparency = 1
+    CloseBtn.Position = UDim2.new(1, -35, 0, 5)
+    CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+    CloseBtn.Font = Enum.Font.GothamBlack
+    CloseBtn.Text = "X"
+    CloseBtn.TextColor3 = Color3.fromRGB(200, 50, 50)
+    CloseBtn.TextSize = 20
+    CloseBtn.ZIndex = 10
+    
+    CloseBtn.MouseButton1Click:Connect(ToggleUI)
+    
+    -- Initial Open
+    ToggleUI()
+
+    -- Dragging MainFrame
     local Dragging, DragInput, DragStart, StartPos
     MainFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -101,7 +182,7 @@ function Library:CreateWindow(name)
     Title.Position = UDim2.new(0, 0, 0, 20)
     Title.Size = UDim2.new(1, 0, 0, 30)
     Title.Font = Enum.Font.GothamBlack
-    Title.Text = name
+    Title.Text = "VETA HUB"
     Title.TextColor3 = UIConfig.MainColor
     Title.TextSize = 22
     
@@ -464,7 +545,7 @@ FarmTab:Dropdown("Select Weapon", {"Melee", "Sword"}, function(v)
     _G.Config.SelectedWeapon = v
 end)
 
-FarmTab:Toggle("Mob Aura (Bring Mobs)", true, function(v)
+FarmTab:Toggle("Mob Aura (Infinite Range)", true, function(v)
     _G.Config.MobAura = v
 end)
 
@@ -546,11 +627,11 @@ task.spawn(function()
                     local TargetName = CurrentQuest.Mob
                     local Target = nil
                     
-                    -- Find closest living mob
+                    -- Find closest living mob (Infinite Range Logic)
                     for _, v in pairs(workspace.Enemies:GetChildren()) do
                         if v.Name == TargetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                             Target = v
-                            break
+                            break -- Just take the first one found, effectively infinite range selection
                         end
                     end
                     
@@ -568,17 +649,18 @@ task.spawn(function()
                         end
                         
                         -- Attack
-                        if (Player.Character.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 15 then
+                        if (Player.Character.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 20 then -- Increased Attack Range slightly
                             -- Fast Attack
                             if _G.Config.FastAttack then
                                 VirtualUser:CaptureController()
                                 VirtualUser:ClickButton1(Vector2.new(851, 158), workspace.Camera.CFrame)
                             end
                             
-                            -- Mob Aura
+                            -- Mob Aura (Infinite Range)
                             if _G.Config.MobAura then
                                 for _, other in pairs(workspace.Enemies:GetChildren()) do
-                                    if other.Name == TargetName and other ~= Target and other:FindFirstChild("HumanoidRootPart") and (other.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 60 then
+                                    -- Check if it's the same mob type, not the current target, exists, and is within 5000 studs (Infinite-ish)
+                                    if other.Name == TargetName and other ~= Target and other:FindFirstChild("HumanoidRootPart") and (other.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 5000 then
                                         other.HumanoidRootPart.CFrame = Target.HumanoidRootPart.CFrame
                                         other.HumanoidRootPart.CanCollide = false
                                         other.Humanoid.WalkSpeed = 0
@@ -588,7 +670,6 @@ task.spawn(function()
                         end
                     else
                         -- Wait for spawn / find spawn point
-                        -- Usually just hover until spawn
                     end
                 end
             end)
