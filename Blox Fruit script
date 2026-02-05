@@ -14,6 +14,9 @@ local Window = Rayfield:CreateWindow({
 
 local MainTab = Window:CreateTab("Auto Farm", 4483362458)
 local StatsTab = Window:CreateTab("Auto Stats", 4483362458)
+local TeleportTab = Window:CreateTab("Teleport", 4483362458)
+local ShopTab = Window:CreateTab("Shop", 4483362458)
+local ESPTab = Window:CreateTab("ESP", 4483362458)
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 
 -- Variables
@@ -21,7 +24,19 @@ _G.AutoFarm = false
 _G.AutoQuest = true -- Default to true if AutoFarm is on
 _G.AutoChest = false
 _G.AutoStats = false
+_G.AutoHaki = true
+_G.AutoSkills = true
 _G.SelectStat = "Melee" 
+_G.ESPPlayer = false
+_G.ESPChest = false
+_G.ESPFruit = false
+_G.WalkSpeed = 16
+_G.JumpPower = 50
+_G.AutoBuyRandomFruit = false
+_G.AutoBuyFightingStyle = false
+_G.SelectFightingStyle = "Black Leg"
+_G.AutoBuyHakiColor = false
+_G.AutoBuyLegendarySword = false
 
 -- Data Tables
 local QuestList = {
@@ -40,6 +55,23 @@ local QuestList = {
     {150, "SkyExp1Quest", "Sky Quest Giver", "Dark Master", 175},
     {175, "ColosseumQuest", "Quest Giver", "Toga Warrior", 180},
     {190, "ColosseumQuest", "Quest Giver", "Gladiator", 200},
+    -- Prison
+    {220, "PrisonerQuest", "Prisoner Quest Giver", "Warden", 220},
+    {230, "PrisonerQuest", "Prisoner Quest Giver", "Chief Warden", 230},
+    {240, "PrisonerQuest", "Prisoner Quest Giver", "Swan", 240},
+    -- Magma Village
+    {300, "MagmaQuest", "Magma Quest Giver", "Military Soldier", 300},
+    {325, "MagmaQuest", "Magma Quest Giver", "Military Spy", 325},
+    {350, "MagmaQuest", "Magma Quest Giver", "Magma Admiral", 350},
+    -- Underwater City
+    {375, "FishmanQuest", "Fishman Quest Giver", "Fishman Warrior", 375},
+    {400, "FishmanQuest", "Fishman Quest Giver", "Fishman Commando", 400},
+    -- Skylands Upper Yard
+    {450, "SkyExp2Quest", "Sky Quest Giver", "God's Guard", 450},
+    {475, "SkyExp2Quest", "Sky Quest Giver", "Shanda", 475},
+    {500, "SkyExp2Quest", "Sky Quest Giver", "Wysper", 500},
+    -- Fountain City
+    {625, "FountainQuest", "Fountain Quest Giver", "Galley Pirate", 625},
 }
 
 -- Services
@@ -110,6 +142,63 @@ local function FindNPC(name)
     return nil
 end
 
+-- ESP Functions
+local function CreateESP(target, name, color)
+    local BillboardGui = Instance.new("BillboardGui")
+    local TextLabel = Instance.new("TextLabel")
+    
+    BillboardGui.Name = "ESP"
+    BillboardGui.Adornee = target
+    BillboardGui.Size = UDim2.new(0, 200, 0, 50)
+    BillboardGui.StudsOffset = Vector3.new(0, 2, 0)
+    BillboardGui.AlwaysOnTop = true
+    BillboardGui.Parent = target
+    
+    TextLabel.Parent = BillboardGui
+    TextLabel.BackgroundTransparency = 1
+    TextLabel.Size = UDim2.new(1, 0, 1, 0)
+    TextLabel.Text = name
+    TextLabel.TextColor3 = color
+    TextLabel.TextStrokeTransparency = 0
+end
+
+-- ESP Loops
+spawn(function()
+    while task.wait(1) do
+        if _G.ESPPlayer then
+            for _, v in pairs(Players:GetPlayers()) do
+                if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Head") and not v.Character.Head:FindFirstChild("ESP") then
+                    CreateESP(v.Character.Head, v.Name, Color3.new(1, 0, 0))
+                end
+            end
+        else
+            for _, v in pairs(Players:GetPlayers()) do
+                 if v.Character and v.Character:FindFirstChild("Head") and v.Character.Head:FindFirstChild("ESP") then
+                    v.Character.Head.ESP:Destroy()
+                 end
+            end
+        end
+        
+        if _G.ESPChest then
+            for _, v in pairs(Workspace:GetChildren()) do
+                if v.Name:find("Chest") and not v:FindFirstChild("ESP") then
+                    CreateESP(v, v.Name, Color3.new(1, 1, 0))
+                end
+            end
+        end
+        
+        if _G.ESPFruit then
+            for _, v in pairs(Workspace:GetChildren()) do
+                if v.Name:find("Fruit") and not v:FindFirstChild("ESP") and v:IsA("Tool") then -- Dropped Fruits
+                     if v:FindFirstChild("Handle") then
+                        CreateESP(v.Handle, v.Name, Color3.new(0, 1, 0))
+                     end
+                end
+            end
+        end
+    end
+end)
+
 -- Main Loop
 spawn(function()
     while task.wait() do
@@ -118,6 +207,14 @@ spawn(function()
                 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
                 if not Character:FindFirstChild("HumanoidRootPart") then return end
                 
+                -- Bring Mobs (Optional enhancement)
+                for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
+                    if enemy:FindFirstChild("HumanoidRootPart") and (enemy.HumanoidRootPart.Position - Character.HumanoidRootPart.Position).Magnitude < 350 then
+                        enemy.HumanoidRootPart.CFrame = Character.HumanoidRootPart.CFrame * CFrame.new(0,0,-5)
+                        enemy.HumanoidRootPart.CanCollide = false
+                    end
+                end
+
                 local QuestData = GetCurrentQuestData()
                 if not QuestData then return end -- No quest found for this level
                 
@@ -158,6 +255,18 @@ spawn(function()
                         VirtualUser:CaptureController()
                         VirtualUser:Button1Down(Vector2.new(1280, 672))
                         
+                        -- Auto Skills
+                        if _G.AutoSkills then
+                            pcall(function()
+                                VirtualUser:Button1Down(Vector2.new(1280, 672)) -- Click
+                                local skills = {"Z", "X", "C", "V"}
+                                for _, key in ipairs(skills) do
+                                    VirtualUser:TypeKey(key)
+                                    task.wait(0.1)
+                                end
+                            end)
+                        end
+
                         -- Equip Weapon (First Tool)
                         local Tool = LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
                         if Tool then
@@ -203,6 +312,22 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
+   Name = "Auto Skills (Z,X,C,V)",
+   CurrentValue = true,
+   Callback = function(Value)
+      _G.AutoSkills = Value
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Auto Buso Haki",
+   CurrentValue = true,
+   Callback = function(Value)
+      _G.AutoHaki = Value
+   end,
+})
+
+MainTab:CreateToggle({
    Name = "Auto Accept Quest",
    CurrentValue = true,
    Callback = function(Value)
@@ -229,6 +354,238 @@ StatsTab:CreateToggle({
    end,
 })
 
+TeleportTab:CreateButton({
+    Name = "Jungle",
+    Callback = function()
+        TweenTo(CFrame.new(-1432, 29, 2800)) -- Jungle Coords
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Pirate Village",
+    Callback = function()
+        TweenTo(CFrame.new(-1182, 4, 3832)) 
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Desert",
+    Callback = function()
+        TweenTo(CFrame.new(909, 6, 4376)) 
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Frozen Village",
+    Callback = function()
+        TweenTo(CFrame.new(1156, 4, -1149)) 
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Marine Fortress",
+    Callback = function()
+        TweenTo(CFrame.new(-4923, 20, 4220)) 
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Skylands",
+    Callback = function()
+        TweenTo(CFrame.new(-4839, 717, -2619)) 
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Prison",
+    Callback = function()
+        TweenTo(CFrame.new(4842, 5, 745)) 
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Colosseum",
+    Callback = function()
+        TweenTo(CFrame.new(-1658, 6, -2976)) 
+    end,
+})
+
+-- Shop Tab
+ShopTab:CreateToggle({
+   Name = "Auto Buy Random Fruit",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.AutoBuyRandomFruit = Value
+   end,
+})
+
+ShopTab:CreateDropdown({
+   Name = "Select Fighting Style",
+   Options = {"Black Leg", "Electro", "Fishman Karate", "Dragon Breath"},
+   CurrentOption = "Black Leg",
+   Callback = function(Option)
+      _G.SelectFightingStyle = Option
+   end,
+})
+
+ShopTab:CreateToggle({
+   Name = "Auto Buy Fighting Style",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.AutoBuyFightingStyle = Value
+   end,
+})
+
+ShopTab:CreateToggle({
+   Name = "Auto Buy Haki Color",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.AutoBuyHakiColor = Value
+   end,
+})
+
+ShopTab:CreateToggle({
+   Name = "Auto Buy Legendary Sword",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.AutoBuyLegendarySword = Value
+   end,
+})
+
+-- Shop Loop
+spawn(function()
+    while task.wait(1) do
+        pcall(function()
+            if _G.AutoBuyRandomFruit then
+                CommF:InvokeServer("Cousin", "Buy")
+            end
+            
+            if _G.AutoBuyFightingStyle then
+                local StyleMap = {
+                    ["Black Leg"] = "BuyBlackLeg",
+                    ["Electro"] = "BuyElectro",
+                    ["Fishman Karate"] = "BuyFishmanKarate",
+                    ["Dragon Breath"] = "BuyDragonBreath"
+                }
+                CommF:InvokeServer(StyleMap[_G.SelectFightingStyle])
+            end
+            
+            if _G.AutoBuyHakiColor then
+                 -- Arguments for Haki Color Vendor might vary, simplistic attempt
+                 CommF:InvokeServer("ActivateHakiColor") 
+            end
+            
+            if _G.AutoBuyLegendarySword then
+                -- Attempt to buy common legendary swords if vendor is open
+                CommF:InvokeServer("BuySaber")
+                CommF:InvokeServer("BuyBisento")
+            end
+        end)
+    end
+end)
+
+ESPTab:CreateToggle({
+   Name = "ESP Players",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.ESPPlayer = Value
+   end,
+})
+
+ESPTab:CreateToggle({
+   Name = "ESP Chests",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.ESPChest = Value
+   end,
+})
+
+ESPTab:CreateToggle({
+   Name = "ESP Dropped Fruits",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.ESPFruit = Value
+   end,
+})
+
+MiscTab:CreateButton({
+    Name = "Redeem All Codes",
+    Callback = function()
+        local codes = {
+            "Sub2Fer999", "Enyu_is_Pro", "Magicbus", "JCWK", "Starcodeheo", "Bluxxy", "fudd10_v2",
+            "Fudd10", "BIGNEWS", "THEGREATACE", "SUB2GAMERROBOT_EXP1", "Sub2NoobMaster123",
+            "Sub2UncleKizaru", "Sub2Daigrock", "Axiore", "TantaiGaming", "StrawHatMaine"
+        }
+        for _, code in ipairs(codes) do
+            CommF:InvokeServer("RedeemCode", code)
+            task.wait(0.5)
+        end
+    end,
+})
+
+MiscTab:CreateButton({
+    Name = "Server Hop",
+    Callback = function()
+        local PlaceID = game.PlaceId
+        local AllIDs = {}
+        local found = false
+        local JustStarted = true
+        local ToSearch = game.HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceID .. "/servers/Public?sortOrder=Asc&limit=100"))
+        for i, v in pairs(ToSearch.data) do
+            if v.playing < v.maxPlayers then
+                table.insert(AllIDs, v.id)
+            end
+        end
+        local num = 0
+        local function Teleport()
+            if #AllIDs > 0 then
+                game:GetService("TeleportService"):TeleportToPlaceInstance(PlaceID, AllIDs[math.random(1, #AllIDs)], LocalPlayer)
+            end
+        end
+        Teleport()
+    end,
+})
+
+MiscTab:CreateSlider({
+    Name = "WalkSpeed",
+    Range = {16, 300},
+    Increment = 1,
+    Suffix = "Speed",
+    CurrentValue = 16,
+    Flag = "WalkSpeed", 
+    Callback = function(Value)
+        _G.WalkSpeed = Value
+        LocalPlayer.Character.Humanoid.WalkSpeed = Value
+    end,
+})
+
+MiscTab:CreateSlider({
+    Name = "JumpPower",
+    Range = {50, 300},
+    Increment = 1,
+    Suffix = "Jump",
+    CurrentValue = 50,
+    Flag = "JumpPower", 
+    Callback = function(Value)
+        _G.JumpPower = Value
+        LocalPlayer.Character.Humanoid.JumpPower = Value
+    end,
+})
+
+-- WalkSpeed Loop (To prevent override)
+spawn(function()
+    while task.wait(0.5) do
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            if LocalPlayer.Character.Humanoid.WalkSpeed ~= _G.WalkSpeed then
+                 LocalPlayer.Character.Humanoid.WalkSpeed = _G.WalkSpeed
+            end
+            if LocalPlayer.Character.Humanoid.JumpPower ~= _G.JumpPower then
+                 LocalPlayer.Character.Humanoid.JumpPower = _G.JumpPower
+            end
+        end
+    end
+end)
+
 MiscTab:CreateToggle({
    Name = "Auto Chests",
    CurrentValue = false,
@@ -250,6 +607,19 @@ spawn(function()
                     end
                 end
              end)
+        end
+    end
+end)
+
+-- Auto Haki Loop
+spawn(function()
+    while task.wait(5) do
+        if _G.AutoHaki then
+            pcall(function()
+                if not LocalPlayer.Character:FindFirstChild("HasBuso") then
+                    CommF:InvokeServer("Buso")
+                end
+            end)
         end
     end
 end)
