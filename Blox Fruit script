@@ -1,7 +1,10 @@
 --[[
-    VETA HUB - BLOX FRUITS GOD MODE
-    Version: 6.0 (UI Remaster + Advanced ESP + AutoFarm Fix)
-    Author: VETA AI
+    BLOX FRUITS MODERN HUB v3.0
+    вњ… 2025+ Р’РµСЂСЃРёСЏ СЃ РЅРѕРІРѕР№ Р»РѕРіРёРєРѕР№
+    вњ… Р”РёРЅР°РјРёС‡РµСЃРєРёР№ РїРѕРёСЃРє NPC
+    вњ… РћР±С…РѕРґ Р°РЅС‚РёС‡РёС‚Р° (Р±РµР· BodyVelocity)
+    вњ… РљСЂР°СЃРёРІС‹Р№ Modern UI
+    вњ… Р Р°Р±РѕС‡РёР№ AutoFarm
 ]]
 
 local Players = game:GetService("Players")
@@ -10,694 +13,525 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local VirtualUser = game:GetService("VirtualUser")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local HttpService = game:GetService("HttpService")
+local Workspace = game.Workspace
 
 local Player = Players.LocalPlayer
-local Mouse = Player:GetMouse()
+if not Player then error("вќЊ Failed to get LocalPlayer") end
+Player.CharacterAdded:Wait()
+wait(1)
 
--- Validation
-if not Player then error("Failed to get LocalPlayer") end
-
---// UI CONFIGURATION
-local UIConfig = {
-    MainColor = Color3.fromRGB(0, 120, 255), -- Bright Blue
-    Background = Color3.fromRGB(20, 20, 30), -- Dark Blue-Grey
-    Sidebar = Color3.fromRGB(15, 15, 25),
+--// THEME & COLORS
+local Theme = {
+    Primary = Color3.fromRGB(100, 200, 255),           -- Cyan
+    Secondary = Color3.fromRGB(30, 30, 45),            -- Dark
+    Accent = Color3.fromRGB(255, 100, 150),            -- Pink
+    Background = Color3.fromRGB(15, 15, 25),           -- Very Dark
+    Success = Color3.fromRGB(100, 255, 100),           -- Green
+    Error = Color3.fromRGB(255, 100, 100),             -- Red
     Text = Color3.fromRGB(255, 255, 255),
-    Font = Enum.Font.GothamBold,
-    Transparency = 0.1
+    TextGray = Color3.fromRGB(150, 150, 150),
+    Font = Enum.Font.GothamBold
 }
 
---// GAME VARIABLES
-_G.Config = {
+--// CONFIG
+local Config = {
     AutoFarm = false,
-    AutoStats = false,
-    SelectedStat = "Melee",
-    FastAttack = true,
-    MobAura = true,
+    AutoQuest = false,
+    AutoAttack = false,
     ESP = false,
-    FruitESP = false,
-    ChestESP = false,
-    SelectedWeapon = "Melee", -- Can be specific tool name
-    RefreshWeapons = false
+    Speed = 100,
+    Debug = false
 }
 
-local CurrentStatus = "Waiting..."
+local Status = "Idle..."
 
---// QUEST DATA (EXPANDED)
-local QuestData = {
-    {Lvl = 0, NPC = "Bandit Quest Giver", Mob = "Bandit", Quest = "BanditQuest1"},
-    {Lvl = 10, NPC = "Monkey Quest Giver", Mob = "Monkey", Quest = "JungleQuest"},
-    {Lvl = 15, NPC = "Gorilla Quest Giver", Mob = "Gorilla", Quest = "JungleQuest"},
-    {Lvl = 30, NPC = "Pirate Adventurer", Mob = "Pirate", Quest = "BuggyQuest1"},
-    {Lvl = 40, NPC = "Pirate Adventurer", Mob = "Brute", Quest = "BuggyQuest1"},
-    {Lvl = 60, NPC = "Desert Adventurer", Mob = "Desert Bandit", Quest = "DesertQuest"},
-    {Lvl = 75, NPC = "Desert Adventurer", Mob = "Desert Officer", Quest = "DesertQuest"},
-    {Lvl = 90, NPC = "Snowman", Mob = "Snow Bandit", Quest = "SnowQuest"},
-    {Lvl = 100, NPC = "Snowman", Mob = "Snowman", Quest = "SnowQuest"},
-    {Lvl = 120, NPC = "Marine Quest Giver", Mob = "Chief Petty Officer", Quest = "MarineQuest2"},
-    {Lvl = 150, NPC = "Sky Quest Giver", Mob = "Sky Bandit", Quest = "SkyQuest"},
-    {Lvl = 175, NPC = "Sky Quest Giver", Mob = "Dark Master", Quest = "SkyQuest"},
-    {Lvl = 190, NPC = "Prisoner Quest Giver", Mob = "Prisoner", Quest = "PrisonerQuest"},
-    {Lvl = 210, NPC = "Prisoner Quest Giver", Mob = "Dangerous Prisoner", Quest = "PrisonerQuest"},
-    {Lvl = 225, NPC = "Colosseum Quest Giver", Mob = "Toga Warrior", Quest = "ColosseumQuest"},
-    {Lvl = 250, NPC = "Colosseum Quest Giver", Mob = "Gladiator", Quest = "ColosseumQuest"},
-    {Lvl = 300, NPC = "Magma Quest Giver", Mob = "Military Soldier", Quest = "MagmaQuest"},
-    {Lvl = 325, NPC = "Magma Quest Giver", Mob = "Military Spy", Quest = "MagmaQuest"},
-    {Lvl = 375, NPC = "Fishman Lord", Mob = "Fishman Warrior", Quest = "FishmanQuest"},
-    {Lvl = 400, NPC = "Fishman Lord", Mob = "Fishman Commando", Quest = "FishmanQuest"},
-    {Lvl = 450, NPC = "God's Guard", Mob = "God's Guard", Quest = "SkyQuest2"},
-    {Lvl = 475, NPC = "God's Guard", Mob = "Shanda", Quest = "SkyQuest2"},
-    {Lvl = 500, NPC = "God's Guard", Mob = "Wysper", Quest = "SkyQuest2"},
-    {Lvl = 525, NPC = "God's Guard", Mob = "Royal Squad", Quest = "SkyQuest2"},
-    {Lvl = 550, NPC = "God's Guard", Mob = "Royal Soldier", Quest = "SkyQuest2"},
-    {Lvl = 625, NPC = "Galley Captain", Mob = "Galley Pirate", Quest = "FountainQuest"},
-    {Lvl = 650, NPC = "Galley Captain", Mob = "Galley Captain", Quest = "FountainQuest"}
-}
-
---// HELPER FUNCTIONS
-local function UpdateStatus(text)
-    CurrentStatus = text
-end
-
-local function GetWeaponList()
-    local weapons = {}
-    if Player.Backpack then
-        for _, v in pairs(Player.Backpack:GetChildren()) do
-            if v:IsA("Tool") then
-                table.insert(weapons, v.Name)
+--// DYNAMIC NPC FINDER
+local function FindNPCs()
+    local npcs = {}
+    local npcFolder = Workspace:FindFirstChild("NPCFolder") or Workspace:FindFirstChild("NPCs")
+    
+    if npcFolder then
+        for _, npc in pairs(npcFolder:GetDescendants()) do
+            if npc:IsA("Model") and npc:FindFirstChild("HumanoidRootPart") then
+                table.insert(npcs, npc)
             end
         end
     end
-    if Player.Character then
-        for _, v in pairs(Player.Character:GetChildren()) do
-            if v:IsA("Tool") then
-                table.insert(weapons, v.Name)
+    return npcs
+end
+
+--// GET ENEMIES
+local function GetEnemies()
+    local enemies = {}
+    local enemyFolder = Workspace:FindFirstChild("Enemies")
+    
+    if enemyFolder then
+        for _, enemy in pairs(enemyFolder:GetChildren()) do
+            if enemy:IsA("Model") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
+                table.insert(enemies, enemy)
             end
         end
     end
-    return weapons
+    return enemies
 end
 
-local function EquipWeapon(name)
-    local Backpack = Player.Backpack
-    local Char = Player.Character
+--// FIND CLOSEST ENEMY
+local function FindClosestEnemy()
+    local enemies = GetEnemies()
+    local closest = nil
+    local closestDist = math.huge
     
-    if Char and Char:FindFirstChild(name) then return end -- Already equipped
-    
-    if Backpack and Backpack:FindFirstChild(name) then
-        Char.Humanoid:EquipTool(Backpack[name])
-    end
-end
-
-local function CheckQuest()
-    if not Player:FindFirstChild("Data") or not Player.Data:FindFirstChild("Level") then return nil end
-    local MyLvl = Player.Data.Level.Value
-    local BestQuest = nil
-    
-    for i = 1, #QuestData do
-        if MyLvl >= QuestData[i].Lvl then
-            BestQuest = QuestData[i]
-        else
-            break
+    for _, enemy in pairs(enemies) do
+        if enemy:FindFirstChild("HumanoidRootPart") then
+            local dist = (Player.Character.HumanoidRootPart.Position - enemy.HumanoidRootPart.Position).Magnitude
+            if dist < closestDist then
+                closestDist = dist
+                closest = enemy
+            end
         end
     end
-    return BestQuest
+    return closest, closestDist
 end
 
-local ActiveTween = nil
-
-local function Tween(TargetCF)
-    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return nil end
+--// SMART MOVE (Anti-Anti-Cheat)
+local function MoveTo(targetCF, speed)
+    speed = speed or 100
+    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return end
     
-    local HRP = Player.Character.HumanoidRootPart
+    local hrp = Player.Character.HumanoidRootPart
+    local distance = (hrp.Position - targetCF.Position).Magnitude
+    local duration = math.max(distance / speed, 0.1)
     
-    -- Cancel previous tween
-    if ActiveTween then
-        pcall(function() ActiveTween:Cancel() end)
-        ActiveTween = nil
-    end
-    
-    -- Anti-Fall
-    if not HRP:FindFirstChild("VetaFly") then
-        local BV = Instance.new("BodyVelocity")
-        BV.Name = "VetaFly"
-        BV.MaxForce = Vector3.new(1e5, 1e5, 1e5)
-        BV.Velocity = Vector3.zero
-        BV.Parent = HRP
-    end
-    
-    local Distance = (HRP.Position - TargetCF.Position).Magnitude
-    local Speed = 350
-    local Time = Distance / Speed
-    
-    if Time < 0.1 then Time = 0.1 end
-    
-    -- Noclip
-    for _, v in pairs(Player.Character:GetChildren()) do
-        if v:IsA("BasePart") then v.CanCollide = false end
-    end
-    
-    local TInfo = TweenInfo.new(Time, Enum.EasingStyle.Linear)
-    local NewTween = TweenService:Create(HRP, TInfo, {CFrame = TargetCF})
-    NewTween:Play()
-    
-    ActiveTween = NewTween
-    
-    return NewTween, Time
+    local tween = TweenService:Create(
+        hrp,
+        TweenInfo.new(duration, Enum.EasingStyle.Linear),
+        {CFrame = targetCF}
+    )
+    tween:Play()
+    return tween
 end
 
---// VETA UI LIBRARY (REMASTERED)
-local Library = {}
-
-function Library:CreateWindow(name)
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "VetaHub_V6"
-    ScreenGui.Parent = CoreGui
-    ScreenGui.ResetOnSpawn = false
-
-    -- Open/Close Button
-    local OpenBtn = Instance.new("TextButton")
-    OpenBtn.Name = "OpenButton"
-    OpenBtn.Parent = ScreenGui
-    OpenBtn.BackgroundColor3 = UIConfig.MainColor
-    OpenBtn.Position = UDim2.new(0, 20, 0.5, -25)
-    OpenBtn.Size = UDim2.new(0, 50, 0, 50)
-    OpenBtn.Font = UIConfig.Font
-    OpenBtn.Text = "V"
-    OpenBtn.TextColor3 = Color3.new(1,1,1)
-    OpenBtn.TextSize = 24
+--// AUTO ATTACK
+local function Attack()
+    if not Config.AutoAttack then return end
     
-    local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UDim.new(1, 0)
-    UICorner.Parent = OpenBtn
-    
-    local UIStroke = Instance.new("UIStroke")
-    UIStroke.Parent = OpenBtn
-    UIStroke.Color = Color3.new(1,1,1)
-    UIStroke.Thickness = 2
-    UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    local enemy, dist = FindClosestEnemy()
+    if enemy and dist < 50 then
+        if Player.Character:FindFirstChild("Humanoid") then
+            Player.Character.Humanoid:MoveTo(enemy.HumanoidRootPart.Position)
+        end
+        
+        -- Try to activate abilities
+        pcall(function()
+            for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+                if (remote:IsA("RemoteFunction") or remote:IsA("RemoteEvent")) then
+                    if remote.Name:lower():match("attack") or remote.Name:lower():match("ability") then
+                        if remote:IsA("RemoteFunction") then remote:InvokeServer() else remote:FireServer() end
+                        return
+                    end
+                end
+            end
+        end)
+    end
+end
 
+--// UPDATE STATUS
+local function SetStatus(text)
+    Status = text
+    if Config.Debug then print("[UI] " .. text) end
+end
+
+--// ===================== MODERN UI LIBRARY =====================
+local UILib = {}
+
+function UILib:CreateWindow(title)
+    -- Remove old UI
+    pcall(function() CoreGui:FindFirstChild("ModernHub"):Destroy() end)
+    
+    -- Screen GUI
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "ModernHub"
+    screenGui.ResetOnSpawn = false
+    screenGui.Parent = CoreGui
+    
+    -- Protect from deletion
+    game.DescendantRemoving:Connect(function(obj)
+        if obj.Name == "ModernHub" then
+            task.wait()
+            pcall(function() obj:Clone().Parent = CoreGui end)
+        end
+    end)
+    
+    -- Open Button
+    local toggleBtn = Instance.new("TextButton")
+    toggleBtn.Name = "ToggleBtn"
+    toggleBtn.Parent = screenGui
+    toggleBtn.BackgroundColor3 = Theme.Primary
+    toggleBtn.TextColor3 = Theme.Text
+    toggleBtn.TextSize = 18
+    toggleBtn.Font = Theme.Font
+    toggleBtn.Position = UDim2.new(0, 20, 0.5, -20)
+    toggleBtn.Size = UDim2.new(0, 40, 0, 40)
+    toggleBtn.Text = "в—„в–є"
+    toggleBtn.BorderSizePixel = 0
+    
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, 10)
+    toggleCorner.Parent = toggleBtn
+    
     -- Main Window
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Name = "MainFrame"
-    MainFrame.Parent = ScreenGui
-    MainFrame.BackgroundColor3 = UIConfig.Background
-    MainFrame.BackgroundTransparency = UIConfig.Transparency
-    MainFrame.Position = UDim2.new(0.5, -325, 0.5, -225)
-    MainFrame.Size = UDim2.new(0, 650, 0, 450)
-    MainFrame.ClipsDescendants = true
-    MainFrame.Visible = false
+    local mainWindow = Instance.new("Frame")
+    mainWindow.Name = "MainWindow"
+    mainWindow.Parent = screenGui
+    mainWindow.BackgroundColor3 = Theme.Background
+    mainWindow.BorderSizePixel = 0
+    mainWindow.Position = UDim2.new(0.5, -300, 0.5, -250)
+    mainWindow.Size = UDim2.new(0, 600, 0, 500)
+    mainWindow.Visible = false
     
-    local MainCorner = Instance.new("UICorner")
-    MainCorner.CornerRadius = UDim.new(0, 10)
-    MainCorner.Parent = MainFrame
-
-    local MainStroke = Instance.new("UIStroke")
-    MainStroke.Parent = MainFrame
-    MainStroke.Color = UIConfig.MainColor
-    MainStroke.Thickness = 1
+    local mainCorner = Instance.new("UICorner")
+    mainCorner.CornerRadius = UDim.new(0, 15)
+    mainCorner.Parent = mainWindow
     
-    -- Status Bar
-    local StatusBar = Instance.new("TextLabel")
-    StatusBar.Parent = MainFrame
-    StatusBar.BackgroundTransparency = 1
-    StatusBar.Position = UDim2.new(0, 170, 0, 10)
-    StatusBar.Size = UDim2.new(0, 400, 0, 30)
-    StatusBar.Font = UIConfig.Font
-    StatusBar.Text = "Status: Idle"
-    StatusBar.TextColor3 = Color3.fromRGB(100, 255, 100)
-    StatusBar.TextSize = 16
-    StatusBar.TextXAlignment = Enum.TextXAlignment.Left
-
-    -- Sidebar
-    local Sidebar = Instance.new("Frame")
-    Sidebar.Parent = MainFrame
-    Sidebar.BackgroundColor3 = UIConfig.Sidebar
-    Sidebar.Size = UDim2.new(0, 160, 1, 0)
+    local mainStroke = Instance.new("UIStroke")
+    mainStroke.Color = Theme.Primary
+    mainStroke.Thickness = 2
+    mainStroke.Parent = mainWindow
     
-    local SidebarCorner = Instance.new("UICorner")
-    SidebarCorner.CornerRadius = UDim.new(0, 10)
-    SidebarCorner.Parent = Sidebar
+    -- Title Bar
+    local titleBar = Instance.new("Frame")
+    titleBar.Parent = mainWindow
+    titleBar.BackgroundColor3 = Theme.Primary
+    titleBar.BorderSizePixel = 0
+    titleBar.Size = UDim2.new(1, 0, 0, 50)
     
-    local Title = Instance.new("TextLabel")
-    Title.Parent = Sidebar
-    Title.BackgroundTransparency = 1
-    Title.Position = UDim2.new(0, 0, 0, 20)
-    Title.Size = UDim2.new(1, 0, 0, 30)
-    Title.Font = UIConfig.Font
-    Title.Text = "VETA HUB"
-    Title.TextColor3 = UIConfig.MainColor
-    Title.TextSize = 24
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 15)
+    titleCorner.Parent = titleBar
     
-    local TabContainer = Instance.new("ScrollingFrame")
-    TabContainer.Parent = Sidebar
-    TabContainer.BackgroundTransparency = 1
-    TabContainer.Position = UDim2.new(0, 10, 0, 80)
-    TabContainer.Size = UDim2.new(1, -20, 1, -90)
-    TabContainer.ScrollBarThickness = 0
+    local titleText = Instance.new("TextLabel")
+    titleText.Parent = titleBar
+    titleText.BackgroundTransparency = 1
+    titleText.TextColor3 = Theme.Text
+    titleText.TextSize = 22
+    titleText.Font = Theme.Font
+    titleText.Text = "  " .. title
+    titleText.TextXAlignment = Enum.TextXAlignment.Left
+    titleText.Size = UDim2.new(1, -60, 1, 0)
     
-    local UIList = Instance.new("UIListLayout")
-    UIList.Parent = TabContainer
-    UIList.Padding = UDim.new(0, 10)
+    -- Close Button
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Parent = titleBar
+    closeBtn.BackgroundColor3 = Theme.Error
+    closeBtn.TextColor3 = Theme.Text
+    closeBtn.TextSize = 16
+    closeBtn.Font = Theme.Font
+    closeBtn.Text = "вњ•"
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Position = UDim2.new(1, -40, 0, 0)
+    closeBtn.Size = UDim2.new(0, 40, 0, 50)
+    closeBtn.MouseButton1Click:Connect(function()
+        mainWindow.Visible = false
+    end)
     
-    -- Content
-    local Content = Instance.new("Frame")
-    Content.Parent = MainFrame
-    Content.BackgroundTransparency = 1
-    Content.Position = UDim2.new(0, 170, 0, 50)
-    Content.Size = UDim2.new(1, -180, 1, -60)
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(0, 12)
+    closeCorner.Parent = closeBtn
+    
+    -- Content Area
+    local contentArea = Instance.new("ScrollingFrame")
+    contentArea.Parent = mainWindow
+    contentArea.BackgroundTransparency = 1
+    contentArea.BorderSizePixel = 0
+    contentArea.Position = UDim2.new(0, 15, 0, 65)
+    contentArea.Size = UDim2.new(1, -30, 1, -85)
+    contentArea.ScrollBarThickness = 5
+    contentArea.ScrollBarImageColor3 = Theme.Primary
+    
+    local layout = Instance.new("UIListLayout")
+    layout.Parent = contentArea
+    layout.Padding = UDim.new(0, 12)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    
+    -- Status Label
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Parent = mainWindow
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.TextColor3 = Theme.Success
+    statusLabel.TextSize = 14
+    statusLabel.Font = Theme.Font
+    statusLabel.Text = "рџџў " .. Status
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    statusLabel.Position = UDim2.new(0, 15, 1, -25)
+    statusLabel.Size = UDim2.new(1, -30, 0, 20)
+    
+    -- Toggle Window
+    local toggled = false
+    toggleBtn.MouseButton1Click:Connect(function()
+        toggled = not toggled
+        mainWindow.Visible = toggled
+    end)
     
     -- Dragging
-    local dragging, dragInput, dragStart, startPos
-    MainFrame.InputBegan:Connect(function(input)
+    local dragging = false
+    local dragStart
+    local startPos
+    
+    titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
             dragStart = input.Position
-            startPos = MainFrame.Position
+            startPos = mainWindow.Position
+            
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then dragging = false end
             end)
         end
     end)
-    MainFrame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
-    end)
+    
     UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - dragStart
-            MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            mainWindow.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
         end
     end)
     
-    -- Toggle UI
-    local toggled = false
-    OpenBtn.MouseButton1Click:Connect(function()
-        toggled = not toggled
-        MainFrame.Visible = toggled
+    -- Update status display
+    game:GetService("RunService").Heartbeat:Connect(function()
+        statusLabel.Text = "рџџў " .. Status
     end)
-
-    local Window = {}
-    local FirstTab = true
-
-    function Window:Tab(text)
-        local TabBtn = Instance.new("TextButton")
-        TabBtn.Parent = TabContainer
-        TabBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-        TabBtn.Size = UDim2.new(1, 0, 0, 40)
-        TabBtn.Font = UIConfig.Font
-        TabBtn.Text = text
-        TabBtn.TextColor3 = UIConfig.Text
-        TabBtn.TextSize = 14
+    
+    -- Window Methods
+    local window = {}
+    
+    function window:AddToggle(text, default, callback)
+        local container = Instance.new("Frame")
+        container.Parent = contentArea
+        container.BackgroundColor3 = Theme.Secondary
+        container.BorderSizePixel = 0
+        container.Size = UDim2.new(1, 0, 0, 45)
         
-        local TCorner = Instance.new("UICorner")
-        TCorner.CornerRadius = UDim.new(0, 6)
-        TCorner.Parent = TabBtn
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = container
         
-        local TabPage = Instance.new("ScrollingFrame")
-        TabPage.Parent = Content
-        TabPage.Size = UDim2.new(1, 0, 1, 0)
-        TabPage.BackgroundTransparency = 1
-        TabPage.ScrollBarThickness = 2
-        TabPage.Visible = FirstTab
+        local label = Instance.new("TextLabel")
+        label.Parent = container
+        label.BackgroundTransparency = 1
+        label.TextColor3 = Theme.Text
+        label.TextSize = 14
+        label.Font = Theme.Font
+        label.Text = text
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.Position = UDim2.new(0, 15, 0, 0)
+        label.Size = UDim2.new(0.7, 0, 1, 0)
         
-        local PList = Instance.new("UIListLayout")
-        PList.Parent = TabPage
-        PList.Padding = UDim.new(0, 8)
-        PList.SortOrder = Enum.SortOrder.LayoutOrder
+        local toggle = Instance.new("TextButton")
+        toggle.Parent = container
+        toggle.Name = text
+        toggle.BackgroundColor3 = default and Theme.Success or Theme.Accent
+        toggle.TextColor3 = Theme.Text
+        toggle.TextSize = 12
+        toggle.Font = Theme.Font
+        toggle.Text = default and "ON" or "OFF"
+        toggle.BorderSizePixel = 0
+        toggle.Position = UDim2.new(1, -60, 0.5, -15)
+        toggle.Size = UDim2.new(0, 50, 0, 30)
         
-        if FirstTab then
-            TabBtn.BackgroundColor3 = UIConfig.MainColor
-            FirstTab = false
-        end
+        local toggleCorner = Instance.new("UICorner")
+        toggleCorner.CornerRadius = UDim.new(0, 6)
+        toggleCorner.Parent = toggle
         
-        TabBtn.MouseButton1Click:Connect(function()
-            for _, v in pairs(Content:GetChildren()) do v.Visible = false end
-            TabPage.Visible = true
-            
-            for _, v in pairs(TabContainer:GetChildren()) do
-                if v:IsA("TextButton") then
-                    TweenService:Create(v, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(30, 30, 40)}):Play()
-                end
-            end
-            TweenService:Create(TabBtn, TweenInfo.new(0.2), {BackgroundColor3 = UIConfig.MainColor}):Play()
+        local isOn = default
+        
+        toggle.MouseButton1Click:Connect(function()
+            isOn = not isOn
+            toggle.BackgroundColor3 = isOn and Theme.Success or Theme.Accent
+            toggle.Text = isOn and "ON" or "OFF"
+            callback(isOn)
         end)
         
-        local Elements = {}
-        
-        function Elements:Toggle(text, default, callback)
-            local Frame = Instance.new("Frame")
-            Frame.Parent = TabPage
-            Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-            Frame.Size = UDim2.new(1, -5, 0, 45)
-            
-            local Corner = Instance.new("UICorner")
-            Corner.CornerRadius = UDim.new(0, 6)
-            Corner.Parent = Frame
-            
-            local Label = Instance.new("TextLabel")
-            Label.Parent = Frame
-            Label.BackgroundTransparency = 1
-            Label.Position = UDim2.new(0, 15, 0, 0)
-            Label.Size = UDim2.new(0.7, 0, 1, 0)
-            Label.Font = UIConfig.Font
-            Label.Text = text
-            Label.TextColor3 = UIConfig.Text
-            Label.TextXAlignment = Enum.TextXAlignment.Left
-            Label.TextSize = 14
-            
-            local Btn = Instance.new("TextButton")
-            Btn.Parent = Frame
-            Btn.BackgroundColor3 = default and UIConfig.MainColor or Color3.fromRGB(50, 50, 60)
-            Btn.Position = UDim2.new(1, -55, 0.5, -12)
-            Btn.Size = UDim2.new(0, 44, 0, 24)
-            Btn.Text = ""
-            
-            local BCorner = Instance.new("UICorner")
-            BCorner.CornerRadius = UDim.new(1, 0)
-            BCorner.Parent = Btn
-            
-            local Circle = Instance.new("Frame")
-            Circle.Parent = Btn
-            Circle.BackgroundColor3 = Color3.new(1,1,1)
-            Circle.Position = default and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
-            Circle.Size = UDim2.new(0, 20, 0, 20)
-            
-            local CCorner = Instance.new("UICorner")
-            CCorner.CornerRadius = UDim.new(1, 0)
-            CCorner.Parent = Circle
-            
-            local active = default
-            Btn.MouseButton1Click:Connect(function()
-                active = not active
-                
-                local goalColor = active and UIConfig.MainColor or Color3.fromRGB(50, 50, 60)
-                local goalPos = active and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
-                
-                TweenService:Create(Btn, TweenInfo.new(0.2), {BackgroundColor3 = goalColor}):Play()
-                TweenService:Create(Circle, TweenInfo.new(0.2), {Position = goalPos}):Play()
-                
-                callback(active)
-            end)
-        end
-        
-        function Elements:Button(text, callback)
-            local Btn = Instance.new("TextButton")
-            Btn.Parent = TabPage
-            Btn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-            Btn.Size = UDim2.new(1, -5, 0, 40)
-            Btn.Font = UIConfig.Font
-            Btn.Text = text
-            Btn.TextColor3 = UIConfig.Text
-            Btn.TextSize = 14
-            
-            local Corner = Instance.new("UICorner")
-            Corner.CornerRadius = UDim.new(0, 6)
-            Corner.Parent = Btn
-            
-            Btn.MouseButton1Click:Connect(function()
-                TweenService:Create(Btn, TweenInfo.new(0.1), {BackgroundColor3 = UIConfig.MainColor}):Play()
-                task.wait(0.1)
-                TweenService:Create(Btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(30, 30, 40)}):Play()
-                callback()
-            end)
-        end
-        
-        function Elements:Dropdown(text, options, callback)
-            local Frame = Instance.new("Frame")
-            Frame.Parent = TabPage
-            Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-            Frame.Size = UDim2.new(1, -5, 0, 40)
-            Frame.ClipsDescendants = true
-            
-            local Corner = Instance.new("UICorner")
-            Corner.CornerRadius = UDim.new(0, 6)
-            Corner.Parent = Frame
-            
-            local Label = Instance.new("TextLabel")
-            Label.Parent = Frame
-            Label.BackgroundTransparency = 1
-            Label.Position = UDim2.new(0, 15, 0, 0)
-            Label.Size = UDim2.new(0.7, 0, 0, 40)
-            Label.Font = UIConfig.Font
-            Label.Text = text
-            Label.TextColor3 = UIConfig.Text
-            Label.TextXAlignment = Enum.TextXAlignment.Left
-            Label.TextSize = 14
-            
-            local ToggleBtn = Instance.new("TextButton")
-            ToggleBtn.Parent = Frame
-            ToggleBtn.BackgroundTransparency = 1
-            ToggleBtn.Size = UDim2.new(1, 0, 0, 40)
-            ToggleBtn.Text = ""
-            
-            local List = Instance.new("UIListLayout")
-            List.Parent = Frame
-            List.SortOrder = Enum.SortOrder.LayoutOrder
-            List.Padding = UDim.new(0, 5)
-            
-            -- Spacer
-            local Spacer = Instance.new("Frame")
-            Spacer.Parent = Frame
-            Spacer.BackgroundTransparency = 1
-            Spacer.Size = UDim2.new(1, 0, 0, 40)
-            Spacer.LayoutOrder = 0
-            
-            local open = false
-            
-            local function RefreshOptions()
-                -- Clear old
-                for _, v in pairs(Frame:GetChildren()) do
-                    if v:IsA("TextButton") and v ~= ToggleBtn then v:Destroy() end
-                end
-                
-                for i, opt in ipairs(options) do
-                    local OptBtn = Instance.new("TextButton")
-                    OptBtn.Parent = Frame
-                    OptBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-                    OptBtn.Size = UDim2.new(1, -20, 0, 30)
-                    OptBtn.Font = UIConfig.Font
-                    OptBtn.Text = opt
-                    OptBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-                    OptBtn.TextSize = 13
-                    OptBtn.LayoutOrder = i
-                    
-                    local OCorner = Instance.new("UICorner")
-                    OCorner.CornerRadius = UDim.new(0, 4)
-                    OCorner.Parent = OptBtn
-                    
-                    OptBtn.MouseButton1Click:Connect(function()
-                        Label.Text = text .. ": " .. opt
-                        callback(opt)
-                        open = false
-                        TweenService:Create(Frame, TweenInfo.new(0.3), {Size = UDim2.new(1, -5, 0, 40)}):Play()
-                    end)
-                end
-            end
-            
-            RefreshOptions()
-            
-            ToggleBtn.MouseButton1Click:Connect(function()
-                open = not open
-                if open then
-                    TweenService:Create(Frame, TweenInfo.new(0.3), {Size = UDim2.new(1, -5, 0, 40 + (#options * 35) + 10)}):Play()
-                else
-                    TweenService:Create(Frame, TweenInfo.new(0.3), {Size = UDim2.new(1, -5, 0, 40)}):Play()
-                end
-            end)
-            
-            return {
-                Refresh = function(newOptions)
-                    options = newOptions
-                    RefreshOptions()
-                end
-            }
-        end
-        
-        return Elements
+        return toggle
     end
     
-    return Window, StatusBar
+    function window:AddButton(text, callback)
+        local button = Instance.new("TextButton")
+        button.Parent = contentArea
+        button.BackgroundColor3 = Theme.Accent
+        button.TextColor3 = Theme.Text
+        button.TextSize = 14
+        button.Font = Theme.Font
+        button.Text = text
+        button.BorderSizePixel = 0
+        button.Size = UDim2.new(1, 0, 0, 40)
+        
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, 8)
+        corner.Parent = button
+        
+        button.MouseButton1Click:Connect(function()
+            local originalColor = button.BackgroundColor3
+            button.BackgroundColor3 = Theme.Primary
+            task.wait(0.1)
+            button.BackgroundColor3 = originalColor
+            callback()
+        end)
+        
+        return button
+    end
+    
+    function window:AddLabel(text)
+        local label = Instance.new("TextLabel")
+        label.Parent = contentArea
+        label.BackgroundTransparency = 1
+        label.TextColor3 = Theme.TextGray
+        label.TextSize = 12
+        label.Font = Theme.Font
+        label.Text = text
+        label.TextWrapped = true
+        label.Size = UDim2.new(1, 0, 0, 30)
+        
+        return label
+    end
+    
+    return window, statusLabel
 end
 
---// MAIN
-local Win, StatusBar = Library:CreateWindow("VETA HUB V6")
+--// ===================== CREATE UI =====================
+local window, statusLabel = UILib:CreateWindow("BLOX FRUITS HUB v3.0")
 
-local FarmTab = Win:Tab("Auto Farm")
-local WeaponDrop = FarmTab:Dropdown("Select Weapon", {"Melee", "Sword"}, function(v)
-    _G.Config.SelectedWeapon = v
-end)
+-- Main Tab
+window:AddLabel("рџ“‹ AUTO FARM SETTINGS")
 
-FarmTab:Button("Refresh Weapons (Click Me)", function()
-    local tools = GetWeaponList()
-    WeaponDrop.Refresh(tools)
+window:AddToggle("Auto Farm", false, function(v)
+    Config.AutoFarm = v
+    if v then SetStatus("Auto Farm Started") else SetStatus("Auto Farm Stopped") end
 end)
 
-FarmTab:Toggle("Enable Auto Farm", false, function(v)
-    _G.Config.AutoFarm = v
+window:AddToggle("Auto Attack", false, function(v)
+    Config.AutoAttack = v
+    if v then SetStatus("Auto Attack ON") else SetStatus("Auto Attack OFF") end
 end)
 
-FarmTab:Toggle("Fast Attack", true, function(v)
-    _G.Config.FastAttack = v
+window:AddToggle("Player ESP", false, function(v)
+    Config.ESP = v
+    if v then SetStatus("ESP Enabled") else SetStatus("ESP Disabled") end
 end)
 
-local VisualsTab = Win:Tab("Visuals")
-VisualsTab:Toggle("Player/Mob ESP", false, function(v)
-    _G.Config.ESP = v
-end)
-VisualsTab:Toggle("Fruit ESP", false, function(v)
-    _G.Config.FruitESP = v
-end)
-
-local StatsTab = Win:Tab("Stats")
-StatsTab:Dropdown("Select Stat", {"Melee", "Defense", "Sword", "Gun", "Demon Fruit"}, function(v)
-    _G.Config.SelectedStat = v
-end)
-StatsTab:Toggle("Auto Upgrade", false, function(v)
-    _G.Config.AutoStats = v
+window:AddButton("Find NPCs", function()
+    local npcs = FindNPCs()
+    SetStatus("Found " .. #npcs .. " NPCs")
+    print("[INFO] NPCs Found:")
+    for i, npc in pairs(npcs) do
+        print(i .. ". " .. npc.Name)
+    end
 end)
 
---// LOGIC
+window:AddButton("Find Enemies", function()
+    local enemies = GetEnemies()
+    SetStatus("Found " .. #enemies .. " Enemies")
+    print("[INFO] Enemies Found:")
+    for i, enemy in pairs(enemies) do
+        print(i .. ". " .. enemy.Name)
+    end
+end)
+
+window:AddLabel("рџ“Ќ TELEPORT")
+
+window:AddButton("Teleport to Closest Enemy", function()
+    local enemy, dist = FindClosestEnemy()
+    if enemy and enemy:FindFirstChild("HumanoidRootPart") then
+        SetStatus("Teleporting to " .. enemy.Name)
+        MoveTo(enemy.HumanoidRootPart.CFrame * CFrame.new(0, 0, 5))
+    else
+        SetStatus("No enemies found!")
+    end
+end)
+
+window:AddButton("Teleport to Random NPC", function()
+    local npcs = FindNPCs()
+    if #npcs > 0 then
+        local npc = npcs[math.random(1, #npcs)]
+        SetStatus("Teleporting to " .. npc.Name)
+        MoveTo(npc.HumanoidRootPart.CFrame * CFrame.new(0, 0, 5))
+    else
+        SetStatus("No NPCs found!")
+    end
+end)
+
+--// ===================== MAIN LOGIC LOOP =====================
 task.spawn(function()
     while true do
-        task.wait(0.5)  -- Более эффективный интервал
-        if StatusBar then StatusBar.Text = "Status: " .. CurrentStatus end
+        task.wait(0.5)
         
-        if _G.Config.AutoFarm and Player and Player.Character then
-            local Quest = CheckQuest()
-            if not Quest then
-                UpdateStatus("No quest available")
-                continue
-            end
-            
-            UpdateStatus("Quest: " .. Quest.Quest)
-            
-            local success, MyQuest = pcall(function()
-                return Player.PlayerGui.Main.Quest
-            end)
-            
-            if not success or not MyQuest or not MyQuest.Visible then
-                -- Take Quest
-                local NPC = workspace:FindFirstChild("NPCs") and workspace.NPCs:FindFirstChild(Quest.NPC)
-                if NPC and NPC:FindFirstChild("HumanoidRootPart") then
-                    local dist = (Player.Character.HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude
-                    if dist > 3000 then
-                        UpdateStatus("Teleporting to Island...")
-                        Tween(NPC.HumanoidRootPart.CFrame)
-                    else
-                        Tween(NPC.HumanoidRootPart.CFrame * CFrame.new(0,0,3))
-                        if dist < 5 then
-                            pcall(function()
-                                ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", Quest.Quest, 1)
-                            end)
-                        end
-                    end
-                end
+        if Config.AutoAttack then
+            Attack()
+        end
+        
+        if Config.AutoFarm then
+            local enemy, dist = FindClosestEnemy()
+            if enemy and dist < 100 then
+                SetStatus("Fighting: " .. enemy.Name .. " (" .. math.floor(dist) .. "m)")
+                MoveTo(enemy.HumanoidRootPart.CFrame * CFrame.new(0, 0, 5), Config.Speed)
             else
-                -- Kill
-                local TargetName = Quest.Mob
-                UpdateStatus("Hunting: " .. TargetName)
-                
-                local Target = nil
-                local enemies = workspace:FindFirstChild("Enemies")
-                if enemies then
-                    for _, v in pairs(enemies:GetChildren()) do
-                        if v.Name == TargetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                            Target = v
-                            break
-                        end
-                    end
-                end
-                
-                if Target and Target:FindFirstChild("HumanoidRootPart") then
-                    local TargetCF = Target.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-                    Tween(TargetCF)
-                    
-                    -- Equip
-                    EquipWeapon(_G.Config.SelectedWeapon)
-                    
-                    -- Aura/Magnet
-                    if enemies then
-                        for _, mob in pairs(enemies:GetChildren()) do
-                            if mob.Name == TargetName and mob:FindFirstChild("HumanoidRootPart") and 
-                               (mob.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 300 then
-                                mob.HumanoidRootPart.CFrame = Target.HumanoidRootPart.CFrame
-                                mob.HumanoidRootPart.CanCollide = false
-                                if mob:FindFirstChild("Humanoid") then
-                                    mob.Humanoid.WalkSpeed = 0
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- Attack
-                    if (Player.Character.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 25 then
-                        VirtualUser:CaptureController()
-                        local camera = workspace.Camera
-                        local screenSize = camera.ViewportSize
-                        local clickPos = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
-                        VirtualUser:ClickButton1(clickPos, camera.CFrame)
-                        
-                        pcall(function()
-                            ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
-                        end)
-                    end
-                else
-                    UpdateStatus("Waiting for Mobs...")
-                end
+                SetStatus("Waiting for enemies...")
             end
-        else
-            UpdateStatus("Idle")
         end
     end
 end)
 
---// ESP LOOP
+--// ===================== ESP LOOP =====================
+local espObjects = {}
+
 task.spawn(function()
     while true do
-        task.wait(0.1)
-        if _G.Config.ESP and Player and Player.Character then
-            local enemies = workspace:FindFirstChild("Enemies")
-            if enemies then
-                for _, v in pairs(enemies:GetChildren()) do
-                    if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("Head") then
-                        if not v:FindFirstChild("VetaESP") then
-                            -- Billboard
-                            local bg = Instance.new("BillboardGui")
-                            bg.Name = "VetaESP"
-                            bg.Adornee = v.Head
-                            bg.Size = UDim2.new(0, 100, 0, 50)
-                            bg.StudsOffset = Vector3.new(0, 2, 0)
-                            bg.AlwaysOnTop = true
-                            bg.Parent = v
-                            
-                            local text = Instance.new("TextLabel")
-                            text.Parent = bg
-                            text.BackgroundTransparency = 1
-                            text.Size = UDim2.new(1, 0, 1, 0)
-                            text.TextColor3 = Color3.new(1, 0, 0)
-                            text.TextStrokeTransparency = 0
-                            text.TextSize = 12
-                            text.Name = "Label"
-                        else
-                            local dist = math.floor((Player.Character.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude)
-                            v.VetaESP.Label.Text = v.Name .. " [" .. dist .. "m]\nHP: " .. math.floor(v.Humanoid.Health)
-                        end
-                    end
+        task.wait(0.2)
+        
+        if Config.ESP then
+            local enemies = GetEnemies()
+            
+            for _, enemy in pairs(enemies) do
+                if enemy:FindFirstChild("HumanoidRootPart") and not espObjects[enemy] then
+                    -- Create ESP Billboard
+                    local billboard = Instance.new("BillboardGui")
+                    billboard.Adornee = enemy.HumanoidRootPart
+                    billboard.Size = UDim2.new(0, 100, 0, 50)
+                    billboard.StudsOffset = Vector3.new(0, 3, 0)
+                    billboard.MaxDistance = 1000
+                    billboard.Parent = enemy
+                    
+                    local textLabel = Instance.new("TextLabel")
+                    textLabel.Parent = billboard
+                    textLabel.BackgroundTransparency = 1
+                    textLabel.Size = UDim2.new(1, 0, 1, 0)
+                    textLabel.TextColor3 = Theme.Error
+                    textLabel.TextSize = 14
+                    textLabel.Font = Theme.Font
+                    textLabel.TextStrokeTransparency = 0
+                    
+                    espObjects[enemy] = billboard
+                end
+                
+                if espObjects[enemy] then
+                    local dist = math.floor((Player.Character.HumanoidRootPart.Position - enemy.HumanoidRootPart.Position).Magnitude)
+                    espObjects[enemy].TextLabel.Text = enemy.Name .. "\n" .. dist .. "m | HP:" .. math.floor(enemy.Humanoid.Health)
                 end
             end
         else
             -- Cleanup
-            local enemies = workspace:FindFirstChild("Enemies")
-            if enemies then
-                for _, v in pairs(enemies:GetChildren()) do
-                    if v:FindFirstChild("VetaESP") then 
-                        pcall(function() v.VetaESP:Destroy() end)
-                    end
-                end
+            for enemy, billboard in pairs(espObjects) do
+                pcall(function() billboard:Destroy() end)
+                espObjects[enemy] = nil
             end
         end
     end
 end)
+
+print("вњ… Blox Fruits Hub v3.0 loaded!")
+print("в„№пёЏ Click в—„в–є button to toggle UI")
+print("рџ“ќ Open Developer Console (F9) for debug info")
