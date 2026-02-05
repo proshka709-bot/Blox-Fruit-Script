@@ -1,369 +1,652 @@
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
-local Window = Rayfield:CreateWindow({
-    Name = "LARB HACK v4.0 | Blox Fruits GOD MODE",
-    LoadingTitle = "Initializing...",
-    LoadingSubtitle = "By VETA",
-    ConfigureSaving = {
-        Enabled = true,
-        FolderName = "LarbHack",
-        FileName = "BF_Config"
-    },
-    Theme = "DarkBlue"
-})
-
--- TABS
-local MainTab = Window:CreateTab("Main Farm", 4483362458)
-local StatsTab = Window:CreateTab("Auto Stats", 4483362458)
-local TeleportTab = Window:CreateTab("Teleport", 4483362458)
-
--- TAB: TELEPORT
-TeleportTab:CreateButton({
-    Name = "Teleport to Starter Island",
-    Callback = function()
-        local npc = workspace.NPCs:FindFirstChild("Bandit Quest Giver")
-        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Teleport to Jungle",
-    Callback = function()
-        local npc = workspace.NPCs:FindFirstChild("Monkey Quest Giver")
-        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Teleport to Pirate Village",
-    Callback = function()
-        local npc = workspace.NPCs:FindFirstChild("Pirate Adventurer")
-        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Teleport to Desert",
-    Callback = function()
-        local npc = workspace.NPCs:FindFirstChild("Desert Adventurer")
-        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Teleport to Snow Village",
-    Callback = function()
-        local npc = workspace.NPCs:FindFirstChild("Snowman")
-        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Teleport to Marine Fortress",
-    Callback = function()
-        local npc = workspace.NPCs:FindFirstChild("Marine Quest Giver")
-        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Teleport to Skylands",
-    Callback = function()
-        local npc = workspace.NPCs:FindFirstChild("Sky Quest Giver")
-        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
-    end,
-})
-
-local EspTab = Window:CreateTab("ESP & Visuals", 4483362458)
-local MiscTab = Window:CreateTab("Misc", 4483362458)
-
--- VARIABLES
-_G.AutoFarm = false
-_G.AutoQuest = false
-_G.AutoStats = false
-_G.SelectedStat = "Melee"
-_G.FastAttack = true
-_G.MobAura = false
-_G.ESP = false
-_G.ChestESP = false
-_G.FruitESP = false
+--[[
+    VETA HUB - BLOX FRUITS GOD MODE
+    Version: 5.0 (Custom UI Edition)
+    Author: VETA AI
+]]
 
 local Players = game:GetService("Players")
-local Player = Players.LocalPlayer
-local RS = game:GetService("RunService")
+local CoreGui = game:GetService("CoreGui")
 local TweenService = game:GetService("TweenService")
-local VIM = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VirtualUser = game:GetService("VirtualUser")
+local HttpService = game:GetService("HttpService")
 
--- QUEST DATA (EXPANDED)
-local QuestData = {
-    -- Level 0-10
-    {Level = 0, NPC = "Bandit Quest Giver", Mob = "Bandit", QuestName = "BanditQuest1"},
-    -- Level 10-15
-    {Level = 10, NPC = "Monkey Quest Giver", Mob = "Monkey", QuestName = "JungleQuest"},
-    -- Level 15-30
-    {Level = 15, NPC = "Gorilla Quest Giver", Mob = "Gorilla", QuestName = "JungleQuest"}, 
-    -- Level 30-40
-    {Level = 30, NPC = "Pirate Adventurer", Mob = "Pirate", QuestName = "BuggyQuest1"}, 
-    -- Level 40-60
-    {Level = 40, NPC = "Pirate Adventurer", Mob = "Brute", QuestName = "BuggyQuest1"},
-    -- Level 60-75
-    {Level = 60, NPC = "Desert Adventurer", Mob = "Desert Bandit", QuestName = "DesertQuest"},
-    -- Level 75-90
-    {Level = 75, NPC = "Desert Adventurer", Mob = "Desert Officer", QuestName = "DesertQuest"},
-    -- Level 90-100
-    {Level = 90, NPC = "Snowman", Mob = "Snow Bandit", QuestName = "SnowQuest"},
-    -- Level 100-120
-    {Level = 100, NPC = "Snowman", Mob = "Snowman", QuestName = "SnowQuest"},
-    -- Level 120-150
-    {Level = 120, NPC = "Marine Quest Giver", Mob = "Chief Petty Officer", QuestName = "MarineQuest2"},
-    -- Level 150-175
-    {Level = 150, NPC = "Sky Quest Giver", Mob = "Sky Bandit", QuestName = "SkyQuest"},
-    -- Level 175-190
-    {Level = 175, NPC = "Sky Quest Giver", Mob = "Dark Master", QuestName = "SkyQuest"},
-    -- Level 190-210
-    {Level = 190, NPC = "Prisoner Quest Giver", Mob = "Prisoner", QuestName = "PrisonerQuest"},
-    -- Level 210-225
-    {Level = 210, NPC = "Prisoner Quest Giver", Mob = "Dangerous Prisoner", QuestName = "PrisonerQuest"},
-    -- Level 225-250
-    {Level = 225, NPC = "Colosseum Quest Giver", Mob = "Toga Warrior", QuestName = "ColosseumQuest"},
-    -- Level 250-300
-    {Level = 250, NPC = "Colosseum Quest Giver", Mob = "Gladiator", QuestName = "ColosseumQuest"},
-    -- Level 300+ (Magma)
-    {Level = 300, NPC = "Magma Quest Giver", Mob = "Military Soldier", QuestName = "MagmaQuest"},
+local Player = Players.LocalPlayer
+local Mouse = Player:GetMouse()
+
+--// PROTECT GUI
+local Viewport = CoreGui
+
+--// VETA UI LIBRARY
+local Library = {}
+local UIConfig = {
+    MainColor = Color3.fromRGB(85, 85, 255),
+    BackgroundColor = Color3.fromRGB(25, 25, 25),
+    SecondaryColor = Color3.fromRGB(35, 35, 35),
+    TextColor = Color3.fromRGB(240, 240, 240),
+    Font = Enum.Font.GothamBold,
+    CornerRadius = UDim.new(0, 8)
 }
 
--- UTILITIES
-local function GetLevel()
-    return Player.Data.Level.Value
-end
-
-local function GetCurrentQuestData()
-    local lvl = GetLevel()
-    local best = nil
-    for _, q in ipairs(QuestData) do
-        if lvl >= q.Level then
-            best = q
-        end
-    end
-    return best
-end
-
-local function TweenTo(cframe)
-    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return end
-    local dist = (Player.Character.HumanoidRootPart.Position - cframe.Position).Magnitude
-    local info = TweenInfo.new(dist / 300, Enum.EasingStyle.Linear) -- Speed 300
-    local tween = TweenService:Create(Player.Character.HumanoidRootPart, info, {CFrame = cframe})
+function Library:Tween(obj, props, time)
+    local info = TweenInfo.new(time or 0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    local tween = TweenService:Create(obj, info, props)
     tween:Play()
-    
-    -- Anti-Kick / Float
-    if not Player.Character.HumanoidRootPart:FindFirstChild("BodyVelocity") then
-        local bv = Instance.new("BodyVelocity")
-        bv.Velocity = Vector3.new(0,0,0)
-        bv.MaxForce = Vector3.new(100000,100000,100000)
-        bv.Parent = Player.Character.HumanoidRootPart
-        
-        tween.Completed:Connect(function()
-            bv:Destroy()
-        end)
-    end
-    
     return tween
 end
 
-local function Attack()
-    pcall(function()
-        local Combat = require(Player.PlayerScripts.CombatFramework)
-        local Cemara = require(Player.PlayerScripts.CombatFramework.CameraShaker)
-        Cemara.CameraShakeInstance.CameraShakeState = {FadingIn = 3, FadingOut = 2, Sustained = 0, Inactive = 1}
-        Combat.activeController.hitboxMagnitude = 60
-        game:GetService("VirtualUser"):CaptureController()
-        game:GetService("VirtualUser"):ClickButton1(Vector2.new(851, 158), game:GetService("Workspace").Camera.CFrame)
+function Library:CreateWindow(name)
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "VetaHub"
+    ScreenGui.Parent = Viewport
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Parent = ScreenGui
+    MainFrame.BackgroundColor3 = UIConfig.BackgroundColor
+    MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
+    MainFrame.Size = UDim2.new(0, 600, 0, 400)
+    MainFrame.ClipsDescendants = true
+    
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UIConfig.CornerRadius
+    UICorner.Parent = MainFrame
+    
+    -- Dragging
+    local Dragging, DragInput, DragStart, StartPos
+    MainFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            Dragging = true
+            DragStart = input.Position
+            StartPos = MainFrame.Position
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    Dragging = false
+                end
+            end)
+        end
     end)
+    
+    MainFrame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            DragInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if input == DragInput and Dragging then
+            local Delta = input.Position - DragStart
+            Library:Tween(MainFrame, {Position = UDim2.new(StartPos.X.Scale, StartPos.X.Offset + Delta.X, StartPos.Y.Scale, StartPos.Y.Offset + Delta.Y)}, 0.1)
+        end
+    end)
+
+    -- Sidebar
+    local Sidebar = Instance.new("Frame")
+    Sidebar.Name = "Sidebar"
+    Sidebar.Parent = MainFrame
+    Sidebar.BackgroundColor3 = UIConfig.SecondaryColor
+    Sidebar.Size = UDim2.new(0, 150, 1, 0)
+    
+    local SidebarCorner = Instance.new("UICorner")
+    SidebarCorner.CornerRadius = UIConfig.CornerRadius
+    SidebarCorner.Parent = Sidebar
+
+    local Title = Instance.new("TextLabel")
+    Title.Parent = Sidebar
+    Title.BackgroundTransparency = 1
+    Title.Position = UDim2.new(0, 0, 0, 20)
+    Title.Size = UDim2.new(1, 0, 0, 30)
+    Title.Font = Enum.Font.GothamBlack
+    Title.Text = name
+    Title.TextColor3 = UIConfig.MainColor
+    Title.TextSize = 22
+    
+    local TabContainer = Instance.new("ScrollingFrame")
+    TabContainer.Parent = Sidebar
+    TabContainer.BackgroundTransparency = 1
+    TabContainer.Position = UDim2.new(0, 10, 0, 70)
+    TabContainer.Size = UDim2.new(1, -20, 1, -80)
+    TabContainer.ScrollBarThickness = 0
+    
+    local UIListLayout = Instance.new("UIListLayout")
+    UIListLayout.Parent = TabContainer
+    UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    UIListLayout.Padding = UDim.new(0, 10)
+
+    -- Content Area
+    local ContentArea = Instance.new("Frame")
+    ContentArea.Name = "ContentArea"
+    ContentArea.Parent = MainFrame
+    ContentArea.BackgroundColor3 = Color3.fromRGB(0,0,0)
+    ContentArea.BackgroundTransparency = 1
+    ContentArea.Position = UDim2.new(0, 160, 0, 10)
+    ContentArea.Size = UDim2.new(1, -170, 1, -20)
+
+    local Window = {}
+    local Tabs = {}
+    local FirstTab = true
+
+    function Window:Tab(icon, text)
+        local TabBtn = Instance.new("TextButton")
+        TabBtn.Parent = TabContainer
+        TabBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+        TabBtn.Size = UDim2.new(1, 0, 0, 35)
+        TabBtn.Font = UIConfig.Font
+        TabBtn.Text = text
+        TabBtn.TextColor3 = UIConfig.TextColor
+        TabBtn.TextSize = 14
+        TabBtn.AutoButtonColor = false
+        
+        local BtnCorner = Instance.new("UICorner")
+        BtnCorner.CornerRadius = UDim.new(0, 6)
+        BtnCorner.Parent = TabBtn
+
+        local TabPage = Instance.new("ScrollingFrame")
+        TabPage.Name = text .. "Page"
+        TabPage.Parent = ContentArea
+        TabPage.BackgroundTransparency = 1
+        TabPage.Size = UDim2.new(1, 0, 1, 0)
+        TabPage.ScrollBarThickness = 2
+        TabPage.Visible = FirstTab
+        
+        local PageLayout = Instance.new("UIListLayout")
+        PageLayout.Parent = TabPage
+        PageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        PageLayout.Padding = UDim.new(0, 10)
+        
+        if FirstTab then
+            TabBtn.BackgroundColor3 = UIConfig.MainColor
+            FirstTab = false
+        end
+        
+        TabBtn.MouseButton1Click:Connect(function()
+            for _, t in pairs(ContentArea:GetChildren()) do t.Visible = false end
+            TabPage.Visible = true
+            
+            for _, b in pairs(TabContainer:GetChildren()) do
+                if b:IsA("TextButton") then
+                    Library:Tween(b, {BackgroundColor3 = Color3.fromRGB(45, 45, 45)})
+                end
+            end
+            Library:Tween(TabBtn, {BackgroundColor3 = UIConfig.MainColor})
+        end)
+        
+        local TabFunctions = {}
+        
+        function TabFunctions:Toggle(text, default, callback)
+            local ToggleFrame = Instance.new("Frame")
+            ToggleFrame.Parent = TabPage
+            ToggleFrame.BackgroundColor3 = UIConfig.SecondaryColor
+            ToggleFrame.Size = UDim2.new(1, -5, 0, 40)
+            
+            local TCorner = Instance.new("UICorner")
+            TCorner.CornerRadius = UDim.new(0, 6)
+            TCorner.Parent = ToggleFrame
+            
+            local TText = Instance.new("TextLabel")
+            TText.Parent = ToggleFrame
+            TText.BackgroundTransparency = 1
+            TText.Position = UDim2.new(0, 15, 0, 0)
+            TText.Size = UDim2.new(0.7, 0, 1, 0)
+            TText.Font = UIConfig.Font
+            TText.Text = text
+            TText.TextColor3 = UIConfig.TextColor
+            TText.TextXAlignment = Enum.TextXAlignment.Left
+            TText.TextSize = 14
+            
+            local Switch = Instance.new("TextButton")
+            Switch.Parent = ToggleFrame
+            Switch.BackgroundColor3 = default and UIConfig.MainColor or Color3.fromRGB(60, 60, 60)
+            Switch.Position = UDim2.new(1, -50, 0.5, -10)
+            Switch.Size = UDim2.new(0, 40, 0, 20)
+            Switch.Text = ""
+            
+            local SCorner = Instance.new("UICorner")
+            SCorner.CornerRadius = UDim.new(1, 0)
+            SCorner.Parent = Switch
+            
+            local Circle = Instance.new("Frame")
+            Circle.Parent = Switch
+            Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+            Circle.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+            Circle.Size = UDim2.new(0, 16, 0, 16)
+            
+            local CCorner = Instance.new("UICorner")
+            CCorner.CornerRadius = UDim.new(1, 0)
+            CCorner.Parent = Circle
+            
+            local enabled = default
+            Switch.MouseButton1Click:Connect(function()
+                enabled = not enabled
+                
+                if enabled then
+                    Library:Tween(Switch, {BackgroundColor3 = UIConfig.MainColor})
+                    Library:Tween(Circle, {Position = UDim2.new(1, -18, 0.5, -8)})
+                else
+                    Library:Tween(Switch, {BackgroundColor3 = Color3.fromRGB(60, 60, 60)})
+                    Library:Tween(Circle, {Position = UDim2.new(0, 2, 0.5, -8)})
+                end
+                
+                pcall(callback, enabled)
+            end)
+        end
+        
+        function TabFunctions:Button(text, callback)
+            local Btn = Instance.new("TextButton")
+            Btn.Parent = TabPage
+            Btn.BackgroundColor3 = UIConfig.SecondaryColor
+            Btn.Size = UDim2.new(1, -5, 0, 40)
+            Btn.Font = UIConfig.Font
+            Btn.Text = text
+            Btn.TextColor3 = UIConfig.TextColor
+            Btn.TextSize = 14
+            Btn.AutoButtonColor = false
+            
+            local BCorner = Instance.new("UICorner")
+            BCorner.CornerRadius = UDim.new(0, 6)
+            BCorner.Parent = Btn
+            
+            Btn.MouseButton1Click:Connect(function()
+                Library:Tween(Btn, {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}, 0.1)
+                task.wait(0.1)
+                Library:Tween(Btn, {BackgroundColor3 = UIConfig.SecondaryColor}, 0.1)
+                pcall(callback)
+            end)
+        end
+        
+        function TabFunctions:Dropdown(text, options, callback)
+            local DropFrame = Instance.new("Frame")
+            DropFrame.Parent = TabPage
+            DropFrame.BackgroundColor3 = UIConfig.SecondaryColor
+            DropFrame.Size = UDim2.new(1, -5, 0, 40)
+            DropFrame.ClipsDescendants = true
+            
+            local DCorner = Instance.new("UICorner")
+            DCorner.CornerRadius = UDim.new(0, 6)
+            DCorner.Parent = DropFrame
+            
+            local DText = Instance.new("TextLabel")
+            DText.Parent = DropFrame
+            DText.BackgroundTransparency = 1
+            DText.Position = UDim2.new(0, 15, 0, 0)
+            DText.Size = UDim2.new(0.7, 0, 0, 40)
+            DText.Font = UIConfig.Font
+            DText.Text = text
+            DText.TextColor3 = UIConfig.TextColor
+            DText.TextXAlignment = Enum.TextXAlignment.Left
+            DText.TextSize = 14
+            
+            local ToggleBtn = Instance.new("TextButton")
+            ToggleBtn.Parent = DropFrame
+            ToggleBtn.BackgroundTransparency = 1
+            ToggleBtn.Size = UDim2.new(1, 0, 0, 40)
+            ToggleBtn.Text = ""
+            
+            local List = Instance.new("UIListLayout")
+            List.Parent = DropFrame
+            List.SortOrder = Enum.SortOrder.LayoutOrder
+            List.Padding = UDim.new(0, 5)
+            
+            local open = false
+            local currentVal = options[1]
+            
+            ToggleBtn.MouseButton1Click:Connect(function()
+                open = not open
+                if open then
+                    Library:Tween(DropFrame, {Size = UDim2.new(1, -5, 0, 40 + (#options * 30) + 10)})
+                else
+                    Library:Tween(DropFrame, {Size = UDim2.new(1, -5, 0, 40)})
+                end
+            end)
+            
+            -- Padding for list
+            local pad = Instance.new("Frame")
+            pad.Parent = DropFrame
+            pad.BackgroundTransparency = 1
+            pad.Size = UDim2.new(1, 0, 0, 5)
+            pad.LayoutOrder = 1
+            
+            for i, opt in ipairs(options) do
+                local OptBtn = Instance.new("TextButton")
+                OptBtn.Parent = DropFrame
+                OptBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+                OptBtn.Size = UDim2.new(1, -20, 0, 25)
+                OptBtn.Position = UDim2.new(0, 10, 0, 0)
+                OptBtn.Font = UIConfig.Font
+                OptBtn.Text = opt
+                OptBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+                OptBtn.TextSize = 12
+                OptBtn.LayoutOrder = i + 1
+                
+                local OCorner = Instance.new("UICorner")
+                OCorner.CornerRadius = UDim.new(0, 4)
+                OCorner.Parent = OptBtn
+                
+                OptBtn.MouseButton1Click:Connect(function()
+                    currentVal = opt
+                    DText.Text = text .. ": " .. opt
+                    open = false
+                    Library:Tween(DropFrame, {Size = UDim2.new(1, -5, 0, 40)})
+                    callback(opt)
+                end)
+            end
+        end
+
+        return TabFunctions
+    end
+    
+    return Window
 end
 
--- MAIN FARM LOOP
+--// GAME LOGIC VARIABLES
+_G.Config = {
+    AutoFarm = false,
+    AutoStats = false,
+    SelectedStat = "Melee",
+    FastAttack = true,
+    MobAura = true,
+    ESP = false,
+    FruitESP = false,
+    ChestESP = false,
+    SelectedWeapon = "Melee" -- Melee, Sword, Blox Fruit
+}
+
+local QuestData = {
+    -- Sea 1 Quests (Simplified List for Stability)
+    {Lvl = 0, NPC = "Bandit Quest Giver", Mob = "Bandit", Quest = "BanditQuest1"},
+    {Lvl = 10, NPC = "Monkey Quest Giver", Mob = "Monkey", Quest = "JungleQuest"},
+    {Lvl = 15, NPC = "Gorilla Quest Giver", Mob = "Gorilla", Quest = "JungleQuest"},
+    {Lvl = 30, NPC = "Pirate Adventurer", Mob = "Pirate", Quest = "BuggyQuest1"},
+    {Lvl = 40, NPC = "Pirate Adventurer", Mob = "Brute", Quest = "BuggyQuest1"},
+    {Lvl = 60, NPC = "Desert Adventurer", Mob = "Desert Bandit", Quest = "DesertQuest"},
+    {Lvl = 75, NPC = "Desert Adventurer", Mob = "Desert Officer", Quest = "DesertQuest"},
+    {Lvl = 90, NPC = "Snowman", Mob = "Snow Bandit", Quest = "SnowQuest"},
+    {Lvl = 100, NPC = "Snowman", Mob = "Snowman", Quest = "SnowQuest"},
+    {Lvl = 120, NPC = "Marine Quest Giver", Mob = "Chief Petty Officer", Quest = "MarineQuest2"},
+    {Lvl = 150, NPC = "Sky Quest Giver", Mob = "Sky Bandit", Quest = "SkyQuest"},
+    {Lvl = 175, NPC = "Sky Quest Giver", Mob = "Dark Master", Quest = "SkyQuest"},
+    {Lvl = 190, NPC = "Prisoner Quest Giver", Mob = "Prisoner", Quest = "PrisonerQuest"},
+    {Lvl = 210, NPC = "Prisoner Quest Giver", Mob = "Dangerous Prisoner", Quest = "PrisonerQuest"},
+    {Lvl = 225, NPC = "Colosseum Quest Giver", Mob = "Toga Warrior", Quest = "ColosseumQuest"},
+    {Lvl = 250, NPC = "Colosseum Quest Giver", Mob = "Gladiator", Quest = "ColosseumQuest"},
+    {Lvl = 300, NPC = "Magma Quest Giver", Mob = "Military Soldier", Quest = "MagmaQuest"},
+    {Lvl = 325, NPC = "Magma Quest Giver", Mob = "Military Spy", Quest = "MagmaQuest"},
+    {Lvl = 375, NPC = "Fishman Lord", Mob = "Fishman Warrior", Quest = "FishmanQuest"},
+    {Lvl = 400, NPC = "Fishman Lord", Mob = "Fishman Commando", Quest = "FishmanQuest"},
+    {Lvl = 450, NPC = "God's Guard", Mob = "God's Guard", Quest = "SkyQuest2"},
+    {Lvl = 475, NPC = "God's Guard", Mob = "Shanda", Quest = "SkyQuest2"},
+    {Lvl = 500, NPC = "God's Guard", Mob = "Wysper", Quest = "SkyQuest2"},
+    {Lvl = 525, NPC = "God's Guard", Mob = "Royal Squad", Quest = "SkyQuest2"},
+    {Lvl = 550, NPC = "God's Guard", Mob = "Royal Soldier", Quest = "SkyQuest2"},
+    {Lvl = 625, NPC = "Galley Captain", Mob = "Galley Pirate", Quest = "FountainQuest"},
+    {Lvl = 650, NPC = "Galley Captain", Mob = "Galley Captain", Quest = "FountainQuest"}
+}
+
+--// FUNCTIONS
+local function CheckQuest()
+    local MyLvl = Player.Data.Level.Value
+    local BestQuest = QuestData[1]
+    
+    for _, v in pairs(QuestData) do
+        if MyLvl >= v.Lvl then
+            BestQuest = v
+        end
+    end
+    return BestQuest
+end
+
+local function EquipWeapon(type)
+    local Backpack = Player.Backpack
+    local Char = Player.Character
+    local Weapon = nil
+    
+    if type == "Melee" then
+        Weapon = Backpack:FindFirstChild("Combat") or Backpack:FindFirstChild("Black Leg") or Backpack:FindFirstChild("Electro") or Backpack:FindFirstChild("Fishman Karate") or Backpack:FindFirstChild("Dragon Claw") or Backpack:FindFirstChild("Superhuman") or Backpack:FindFirstChild("Death Step") or Backpack:FindFirstChild("Sharkman Karate") or Backpack:FindFirstChild("Electric Claw") or Backpack:FindFirstChild("Dragon Talon") or Backpack:FindFirstChild("Godhuman")
+    elseif type == "Sword" then
+        for _, v in pairs(Backpack:GetChildren()) do
+            if v:IsA("Tool") and v.ToolTip == "Sword" then Weapon = v break end
+        end
+    end
+    
+    if Weapon then
+        Player.Character.Humanoid:EquipTool(Weapon)
+    end
+end
+
+local function Tween(TargetCF)
+    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return end
+    
+    -- BodyVelocity to prevent falling/flinging
+    local HRP = Player.Character.HumanoidRootPart
+    if not HRP:FindFirstChild("VetaFly") then
+        local BV = Instance.new("BodyVelocity")
+        BV.Name = "VetaFly"
+        BV.MaxForce = Vector3.new(1e5, 1e5, 1e5)
+        BV.Velocity = Vector3.zero
+        BV.Parent = HRP
+    end
+    
+    local Distance = (HRP.Position - TargetCF.Position).Magnitude
+    local Speed = 300 -- Speed
+    local Time = Distance / Speed
+    
+    local TInfo = TweenInfo.new(Time, Enum.EasingStyle.Linear)
+    local Tween = TweenService:Create(HRP, TInfo, {CFrame = TargetCF})
+    Tween:Play()
+    
+    -- Noclip during tween
+    for _, v in pairs(Player.Character:GetChildren()) do
+        if v:IsA("BasePart") then v.CanCollide = false end
+    end
+    
+    return Tween
+end
+
+--// MAIN UI SETUP
+local Win = Library:CreateWindow("VETA HUB | Blox Fruits")
+
+-- TAB 1: FARM
+local FarmTab = Win:Tab("rbxassetid://1", "Auto Farm")
+
+FarmTab:Toggle("Enable Auto Farm", false, function(v)
+    _G.Config.AutoFarm = v
+end)
+
+FarmTab:Toggle("Fast Attack (Auto Click)", true, function(v)
+    _G.Config.FastAttack = v
+end)
+
+FarmTab:Dropdown("Select Weapon", {"Melee", "Sword"}, function(v)
+    _G.Config.SelectedWeapon = v
+end)
+
+FarmTab:Toggle("Mob Aura (Bring Mobs)", true, function(v)
+    _G.Config.MobAura = v
+end)
+
+-- TAB 2: STATS
+local StatsTab = Win:Tab("rbxassetid://2", "Stats")
+
+StatsTab:Dropdown("Select Stat", {"Melee", "Defense", "Sword", "Gun", "Demon Fruit"}, function(v)
+    _G.Config.SelectedStat = v
+end)
+
+StatsTab:Toggle("Auto Upgrade Stats", false, function(v)
+    _G.Config.AutoStats = v
+end)
+
+-- TAB 3: ESP
+local ESPTab = Win:Tab("rbxassetid://3", "Visuals")
+
+ESPTab:Toggle("Player ESP", false, function(v)
+    _G.Config.ESP = v
+end)
+
+ESPTab:Toggle("Fruit ESP", false, function(v)
+    _G.Config.FruitESP = v
+end)
+
+ESPTab:Toggle("Chest ESP", false, function(v)
+    _G.Config.ChestESP = v
+end)
+
+-- TAB 4: MISC
+local MiscTab = Win:Tab("rbxassetid://4", "Misc")
+
+MiscTab:Button("Rejoin Server", function()
+    game:GetService("TeleportService"):Teleport(game.PlaceId, Player)
+end)
+
+MiscTab:Button("Redeem All Codes", function()
+    local Codes = {
+        "AXIORE", "BIGNEWS", "BLUXXY", "CHANDLER", "ENNY_IS_PRO_IN_MINT", "FUDD10", "FUDD10_V2", "JCWK", "KITTGAMING",
+        "MAGICBUS", "STARCODEHEO", "SUB2CAPTAINMAUI", "SUB2DAIGROCK", "SUB2FER999", "SUB2GAMERROBOT_EXP1", "SUB2GAMERROBOT_RESET1",
+        "SUB2NOOBMASTER123", "SUB2OFFICIALNOOBIE", "SUB2UNCLEKIZARU", "TANTAI", "THEGREATACE", "STRAWHATMAINE"
+    }
+    for _, code in ipairs(Codes) do
+        ReplicatedStorage.Remotes.CommF_:InvokeServer("RedeemCode", code)
+        task.wait(0.5)
+    end
+end)
+
+--// LOGIC LOOPS
+
+-- 1. Auto Farm Loop
 task.spawn(function()
     while true do
         task.wait()
-        if _G.AutoFarm then
+        if _G.Config.AutoFarm then
             pcall(function()
-                local quest = GetCurrentQuestData()
-                if not quest then return end
+                local CurrentQuest = CheckQuest()
+                if not CurrentQuest then return end
                 
-                -- 1. Check if we have quest
-                local myQuest = Player.PlayerGui.Main.Quest
-                if not myQuest.Visible then
-                    -- Go take quest
-                    local npc = workspace.NPCs:FindFirstChild(quest.NPC)
-                    if npc then
-                        if (Player.Character.HumanoidRootPart.Position - npc.HumanoidRootPart.Position).Magnitude > 10 then
-                            TweenTo(npc.HumanoidRootPart.CFrame * CFrame.new(0,0,3))
+                -- Check if we have the quest active
+                local PlayerQuest = Player.PlayerGui.Main.Quest
+                if not PlayerQuest.Visible then
+                    -- Get Quest
+                    local NPC = workspace.NPCs:FindFirstChild(CurrentQuest.NPC)
+                    if NPC then
+                        if (Player.Character.HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude > 5000 then
+                            -- Instant TP if too far (Island to Island)
+                             Player.Character.HumanoidRootPart.CFrame = NPC.HumanoidRootPart.CFrame
                         else
-                            -- Interact
-                            fireclickdetector(npc.ClickDetector)
-                            -- Try Remote if Interact fails (Basic Remote implementation)
-                            game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", quest.QuestName, 1)
+                            Tween(NPC.HumanoidRootPart.CFrame * CFrame.new(0, 0, 5))
+                        end
+                        
+                        if (Player.Character.HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude <= 10 then
+                            ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", CurrentQuest.Quest, 1)
                         end
                     end
                 else
-                    -- 2. Farm Mobs
-                    local enemyName = quest.Mob
-                    local enemy = nil
+                    -- Quest Active -> Kill Mobs
+                    local TargetName = CurrentQuest.Mob
+                    local Target = nil
                     
-                    -- Find closest enemy
+                    -- Find closest living mob
                     for _, v in pairs(workspace.Enemies:GetChildren()) do
-                        if v.Name == enemyName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                            enemy = v
+                        if v.Name == TargetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+                            Target = v
                             break
                         end
                     end
                     
-                    if enemy then
-                        enemy.HumanoidRootPart.CanCollide = false
-                        enemy.Humanoid.WalkSpeed = 0
+                    if Target then
+                        -- Farm Position (Above Head)
+                        local FarmPos = Target.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+                        Tween(FarmPos)
                         
-                        -- Tween to enemy (Above)
-                        local farmPos = enemy.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-                        TweenTo(farmPos)
+                        -- Equip Weapon
+                        EquipWeapon(_G.Config.SelectedWeapon)
+                        
+                        -- Enable Haki
+                        if not Player.Character:FindFirstChild("HasBuso") then
+                            ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
+                        end
                         
                         -- Attack
-                        if (Player.Character.HumanoidRootPart.Position - enemy.HumanoidRootPart.Position).Magnitude < 20 then
-                            if _G.FastAttack then
-                                Attack()
-                            else
-                                VIM:SendKeyEvent(true, Enum.KeyCode.Z, false, game) -- Basic skill
-                                VIM:SendMouseButtonEvent(0, 0, 0, true, game, 1) -- Click
-                                task.wait(0.1)
-                                VIM:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                        if (Player.Character.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 15 then
+                            -- Fast Attack
+                            if _G.Config.FastAttack then
+                                VirtualUser:CaptureController()
+                                VirtualUser:ClickButton1(Vector2.new(851, 158), workspace.Camera.CFrame)
+                            end
+                            
+                            -- Mob Aura
+                            if _G.Config.MobAura then
+                                for _, other in pairs(workspace.Enemies:GetChildren()) do
+                                    if other.Name == TargetName and other ~= Target and other:FindFirstChild("HumanoidRootPart") and (other.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 60 then
+                                        other.HumanoidRootPart.CFrame = Target.HumanoidRootPart.CFrame
+                                        other.HumanoidRootPart.CanCollide = false
+                                        other.Humanoid.WalkSpeed = 0
+                                    end
+                                end
                             end
                         end
                     else
-                        -- No enemy found, wait for spawn
-                        -- Optional: Teleport to spawn area
+                        -- Wait for spawn / find spawn point
+                        -- Usually just hover until spawn
                     end
                 end
             end)
+        else
+            -- Cleanup
+            if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") and Player.Character.HumanoidRootPart:FindFirstChild("VetaFly") then
+                Player.Character.HumanoidRootPart.VetaFly:Destroy()
+            end
         end
     end
 end)
 
--- AUTO STATS LOOP
+-- 2. Auto Stats Loop
 task.spawn(function()
     while true do
         task.wait(0.5)
-        if _G.AutoStats then
-            game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("AddPoint", _G.SelectedStat, 1)
+        if _G.Config.AutoStats then
+            ReplicatedStorage.Remotes.CommF_:InvokeServer("AddPoint", _G.Config.SelectedStat, 1)
         end
     end
 end)
 
--- ESP FUNCTION
-local function UpdateESP()
-    for _, v in pairs(workspace:GetChildren()) do
-        if _G.ChestESP and v.Name:find("Chest") then
-            if not v:FindFirstChild("ESP") then
-                local h = Instance.new("Highlight", v)
-                h.Name = "ESP"
-                h.FillColor = Color3.new(1,1,0)
-            end
-        end
-        if _G.FruitESP and v.Name:find("Fruit") and v:IsA("Tool") then -- Dropped fruit
-             if not v:FindFirstChild("ESP") then
-                local h = Instance.new("Highlight", v)
-                h.Name = "ESP"
-                h.FillColor = Color3.new(1,0,0)
-            end
-        end
-    end
-    
-    for _, p in pairs(Players:GetPlayers()) do
-        if _G.ESP and p ~= Player and p.Character then
-             if not p.Character:FindFirstChild("ESP") then
-                local h = Instance.new("Highlight", p.Character)
-                h.Name = "ESP"
-                h.FillColor = Color3.new(0,1,0)
-            end
-        end
-    end
-end
-
+-- 3. ESP Loop
 task.spawn(function()
     while true do
         task.wait(1)
-        UpdateESP()
+        -- Clear old ESP handled by Highlights automatically if parent destroyed? 
+        -- Actually safer to re-apply
+        
+        if _G.Config.ESP then
+            for _, p in pairs(Players:GetPlayers()) do
+                if p ~= Player and p.Character then
+                    if not p.Character:FindFirstChild("VetaESP") then
+                        local h = Instance.new("Highlight", p.Character)
+                        h.Name = "VetaESP"
+                        h.FillColor = Color3.fromRGB(0, 255, 0)
+                        h.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    end
+                end
+            end
+        else
+            for _, p in pairs(Players:GetPlayers()) do
+                if p.Character and p.Character:FindFirstChild("VetaESP") then
+                    p.Character.VetaESP:Destroy()
+                end
+            end
+        end
+        
+        if _G.Config.FruitESP then
+             for _, v in pairs(workspace:GetChildren()) do
+                if v.Name:find("Fruit") and v:IsA("Tool") then
+                     if not v:FindFirstChild("VetaESP") then
+                        local h = Instance.new("Highlight", v)
+                        h.Name = "VetaESP"
+                        h.FillColor = Color3.fromRGB(255, 0, 0)
+                    end
+                end
+             end
+        end
     end
 end)
-
--- ========== GUI SETUP ==========
-
--- TAB: MAIN FARM
-MainTab:CreateToggle({
-    Name = "Enable Auto Farm",
-    CurrentValue = false,
-    Callback = function(Value)
-        _G.AutoFarm = Value
-    end,
-})
-
-MainTab:CreateToggle({
-    Name = "Fast Attack (Laggy)",
-    CurrentValue = true,
-    Callback = function(Value)
-        _G.FastAttack = Value
-    end,
-})
-
--- TAB: STATS
-StatsTab:CreateDropdown({
-    Name = "Select Stat",
-    Options = {"Melee", "Defense", "Sword", "Gun", "Demon Fruit"},
-    CurrentOption = "Melee",
-    Callback = function(Value)
-        _G.SelectedStat = Value
-    end,
-})
-
-StatsTab:CreateToggle({
-    Name = "Auto Upgrade Stat",
-    CurrentValue = false,
-    Callback = function(Value)
-        _G.AutoStats = Value
-    end,
-})
-
--- TAB: ESP
-EspTab:CreateToggle({
-    Name = "Player ESP",
-    CurrentValue = false,
-    Callback = function(Value)
-        _G.ESP = Value
-    end,
-})
-
-EspTab:CreateToggle({
-    Name = "Chest ESP",
-    CurrentValue = false,
-    Callback = function(Value)
-        _G.ChestESP = Value
-    end,
-})
-
-EspTab:CreateToggle({
-    Name = "Fruit ESP",
-    CurrentValue = false,
-    Callback = function(Value)
-        _G.FruitESP = Value
-    end,
-})
-
--- TAB: MISC
-MiscTab:CreateButton({
-    Name = "Rejoin Server",
-    Callback = function()
-        game:GetService("TeleportService"):Teleport(game.PlaceId, Player)
-    end,
-})
-
-Window:CreateLabel("Updated by AI Assistant - v4.0")
-Rayfield:LoadConfiguration()
