@@ -1,3 +1,8 @@
+-- [[ LARB SYSTEM v7.1.0 | CHANGELOG v9 ]]
+-- Mode: Code (Security & Logic Patches)
+-- Security: Reduced Mob Bring radius (150), VirtualInputManager implementation
+-- Logic: Quest validation check, Smart Weapon Equip (Anti-Fruit-Eat)
+
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
@@ -128,14 +133,18 @@ local function TweenTo(targetCFrame)
 end
 
 local function FindNPC(name)
-    for _, v in pairs(Workspace.NPCs:GetChildren()) do
-        if v.Name == name or v.Name:find(name) then
-            return v
+    -- Prioritize NPCs folder
+    if Workspace:FindFirstChild("NPCs") then
+        for _, v in pairs(Workspace.NPCs:GetChildren()) do
+            if v.Name == name or v.Name:find(name) then
+                return v
+            end
         end
     end
-    -- Fallback for some maps where NPCs are structured differently
-    for _, v in pairs(Workspace:GetDescendants()) do
-        if v.Name == name and v:IsA("Model") and v:FindFirstChild("Head") then
+    
+    -- Search everywhere else (Cache this if possible, but for now linear search)
+    for _, v in pairs(Workspace:GetChildren()) do
+        if (v.Name == name or v.Name:find(name)) and v:IsA("Model") and v:FindFirstChild("Head") then
             return v
         end
     end
@@ -205,76 +214,107 @@ spawn(function()
         if _G.AutoFarm then
             pcall(function()
                 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                if not Character:FindFirstChild("HumanoidRootPart") then return end
+                local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+                if not HumanoidRootPart then return end
                 
-                -- Bring Mobs (Optional enhancement)
-                for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
-                    if enemy:FindFirstChild("HumanoidRootPart") and (enemy.HumanoidRootPart.Position - Character.HumanoidRootPart.Position).Magnitude < 350 then
-                        enemy.HumanoidRootPart.CFrame = Character.HumanoidRootPart.CFrame * CFrame.new(0,0,-5)
-                        enemy.HumanoidRootPart.CanCollide = false
-                    end
-                end
-
                 local QuestData = GetCurrentQuestData()
                 if not QuestData then return end -- No quest found for this level
                 
+                -- 1. Quest Handling
                 if _G.AutoQuest and not CheckActiveQuest() then
-                    -- 1. Get Quest
                     local NPC = FindNPC(QuestData[3])
                     if NPC and NPC:FindFirstChild("HumanoidRootPart") then
-                        if (Character.HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude > 10 then
+                        local dist = (HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude
+                        if dist > 8 then
                             TweenTo(NPC.HumanoidRootPart.CFrame)
                         else
-                            -- Interact
+                            -- Spam Request when close
                             CommF:InvokeServer("StartQuest", QuestData[2], 1)
+                            CommF:InvokeServer("SetSpawnPoint")
+                            task.wait(0.5)
+                            if CheckActiveQuest() then return end
+                        end
+                        return -- Stop loop to focus on getting quest
+                    else
+                         -- NPC not found? Maybe Teleport to a default spot or warn
+                    end
+                end
+
+                -- 2. Mob Farming
+                -- Bring Mobs (Safe Mode - Reduced Range)
+                for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
+                    if enemy.Name == QuestData[4] and enemy:FindFirstChild("HumanoidRootPart") and (enemy.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude < 150 then
+                        enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0,0,-5)
+                        enemy.HumanoidRootPart.CanCollide = false
+                        if enemy:FindFirstChild("Humanoid") then
+                            enemy.Humanoid.WalkSpeed = 0
+                            enemy.Humanoid.JumpPower = 0
+                            -- Stun mod
+                            if enemy.Humanoid:FindFirstChild("Animator") then
+                                enemy.Humanoid.Animator:Destroy()
+                            end
                         end
                     end
-                else
-                    -- 2. Farm Mobs
-                    local Target = nil
-                    for _, v in pairs(Workspace.Enemies:GetChildren()) do
-                        if v.Name == QuestData[4] and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+                end
+
+                -- Find Closest Target
+                local Target = nil
+                local MinDist = math.huge
+                for _, v in pairs(Workspace.Enemies:GetChildren()) do
+                    if v.Name == QuestData[4] and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
+                        local dist = (HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude
+                        if dist < MinDist then
+                            MinDist = dist
                             Target = v
+                        end
+                    end
+                end
+                    
+                if Target then
+                    -- Teleport/Tween to Mob
+                    local AttackPos = Target.HumanoidRootPart.CFrame * CFrame.new(0, 5, 0)
+                    local Distance = (HumanoidRootPart.Position - AttackPos.Position).Magnitude
+                    
+                    if Distance > 250 then
+                         TweenTo(AttackPos)
+                    elseif Distance > 10 then
+                         HumanoidRootPart.CFrame = AttackPos
+                    else
+                         -- Lock on
+                         HumanoidRootPart.CFrame = AttackPos
+                    end
+                    
+                    -- Fast Attack (VirtualInputManager)
+                    game:GetService("VirtualInputManager"):SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                    game:GetService("VirtualInputManager"):SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                    
+                    -- Auto Skills
+                    if _G.AutoSkills then
+                        pcall(function()
+                            local skills = {"Z", "X", "C", "V"}
+                            for _, key in ipairs(skills) do
+                                game:GetService("VirtualInputManager"):SendKeyEvent(true, key, false, game)
+                                game:GetService("VirtualInputManager"):SendKeyEvent(false, key, false, game)
+                            end
+                        end)
+                    end
+
+                    -- Equip Weapon (Smart Equip)
+                    local Equipped = false
+                    for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
+                        if tool:IsA("Tool") and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword") then
+                            LocalPlayer.Character.Humanoid:EquipTool(tool)
+                            Equipped = true
                             break
                         end
                     end
-                    
-                    if Target then
-                        -- Teleport/Tween to Mob
-                        local AttackPos = Target.HumanoidRootPart.CFrame * CFrame.new(0, 5, 0)
-                        local Distance = (Character.HumanoidRootPart.Position - AttackPos.Position).Magnitude
-                        
-                        if Distance > 250 then
-                             TweenTo(AttackPos)
-                        elseif Distance > 10 then
-                             -- Fast movement for short distance
-                             Character.HumanoidRootPart.CFrame = AttackPos
-                        end
-                        
-                        -- Auto Attack
-                        VirtualUser:CaptureController()
-                        VirtualUser:Button1Down(Vector2.new(1280, 672))
-                        
-                        -- Auto Skills
-                        if _G.AutoSkills then
-                            pcall(function()
-                                VirtualUser:Button1Down(Vector2.new(1280, 672)) -- Click
-                                local skills = {"Z", "X", "C", "V"}
-                                for _, key in ipairs(skills) do
-                                    VirtualUser:TypeKey(key)
-                                    task.wait(0.1)
-                                end
-                            end)
-                        end
-
-                        -- Equip Weapon (First Tool)
-                        local Tool = LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
-                        if Tool then
-                            LocalPlayer.Character.Humanoid:EquipTool(Tool)
-                        end
-                    else
-                        -- Mob not found, wait for spawn
-                        -- Optional: Teleport to spawn location if known
+                    if not Equipped then
+                         for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
+                            if tool:IsA("Tool") and not tool.Name:find("Fruit") then
+                                LocalPlayer.Character.Humanoid:EquipTool(tool)
+                                break
+                            end
+                         end
                     end
                 end
             end)
