@@ -1,9 +1,8 @@
--- [[ LARB SYSTEM v7.1.0 | CHANGELOG v16 ]]
--- Mode: Code (Combat Overhaul)
--- Added: Strict Weapon Selection (Prevents spamming all items)
--- Added: Magnet "Black Hole" (Pulls all mobs to one spot)
--- Added: Hitbox Expander (Allows hitting mobs from afar with any weapon)
--- Improved: Safe Hover (Player stays 20 studs above danger)
+-- [[ LARB SYSTEM v7.1.0 | CHANGELOG v17 ]]
+-- Mode: Code (Bug Fixes)
+-- Fixed: Weapon Selection Spam (Now checks if equipped first)
+-- Fixed: "Flying Away" (Added Anchored Farm Position)
+-- Improved: Farm Stability (Prevents drift loops)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -331,48 +330,57 @@ task.spawn(function()
                 end
                     
                 if Target then
-                    -- 1. Equip Weapon (Strict Selection)
+                    -- 1. Equip Weapon (Strict & Optimized)
                     local function EquipSelected()
                          local Character = LocalPlayer.Character
                          if not Character then return end
                          local Humanoid = Character:FindFirstChild("Humanoid")
                          if not Humanoid then return end
                          
-                         -- Check currently equipped
-                         local Current = Character:FindFirstChildOfClass("Tool")
                          local WantedType = _G.SelectWeapon -- "Melee", "Sword", "Demon Fruit"
                          
+                         -- Check if we are ALREADY holding the correct weapon
+                         local Current = Character:FindFirstChildOfClass("Tool")
                          if Current then
                              if (WantedType == "Demon Fruit" and Current.ToolTip == "Blox Fruit") or
                                 (WantedType == "Sword" and Current.ToolTip == "Sword") or
                                 (WantedType == "Melee" and Current.ToolTip == "Melee") then
-                                 return -- Correct weapon equipped
+                                 return -- All good, do nothing
                              end
-                             Humanoid:UnequipTools() -- Unequip wrong weapon
+                             -- Only unequip if we are holding the WRONG thing
+                             Humanoid:UnequipTools()
+                             task.wait(0.1) -- Small delay to prevent glitching
                          end
                          
-                         -- Find and Equip from Backpack
+                         -- Equip the correct one
                          for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
                              if tool:IsA("Tool") then
                                  if (WantedType == "Demon Fruit" and tool.ToolTip == "Blox Fruit") or
                                     (WantedType == "Sword" and tool.ToolTip == "Sword") or
                                     (WantedType == "Melee" and tool.ToolTip == "Melee") then
                                      Humanoid:EquipTool(tool)
-                                     return
+                                     break -- Stop after equipping one
                                  end
                              end
                          end
                     end
                     EquipSelected()
 
-                    -- 2. Position Player (Safe Hover)
-                    local TargetPos = Target.HumanoidRootPart.Position
-                    -- Hover 20 studs above (Safe range)
-                    local AttackPos = CFrame.new(TargetPos + Vector3.new(0, 20, 0), TargetPos) 
+                    -- 2. Position Player (Anchored Farm)
+                    -- Fix for "Flying Away": Do NOT follow the mob every frame.
+                    -- Lock position to the initial spot where we found the mob/spawn.
+                    
+                    if not _G.FarmPos or (Target.HumanoidRootPart.Position - _G.FarmPos).Magnitude > 50 then
+                        -- Set new anchor point 20 studs above the target
+                        _G.FarmPos = Target.HumanoidRootPart.Position + Vector3.new(0, 20, 0)
+                    end
+                    
+                    local AttackPos = CFrame.new(_G.FarmPos)
                     local Distance = (HumanoidRootPart.Position - AttackPos.Position).Magnitude
                     
                     if Distance > 250 then
                          TweenTo(AttackPos)
+                         _G.FarmPos = nil -- Reset anchor if we had to tween far (likely moved to new zone)
                     else
                          HumanoidRootPart.CFrame = AttackPos
                          HumanoidRootPart.Velocity = Vector3.new(0,0,0)
@@ -382,20 +390,21 @@ task.spawn(function()
                     end
                     
                     -- 3. Bring Mobs (Magnet + Reach)
-                    -- Pulls all matching mobs to a single spot in front of player
+                    -- Pulls all matching mobs to the ANCHORED player position
                     for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
                         if enemy.Name:find(TargetMobName) and enemy:FindFirstChild("HumanoidRootPart") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
-                            -- Bring Logic
-                            enemy.HumanoidRootPart.CanCollide = false
-                            enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0, -10, 0) -- Bring BELOW player (since we hover 20 studs up)
-                            enemy.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
-                            enemy.Humanoid.WalkSpeed = 0
-                            enemy.Humanoid.JumpPower = 0
-                            
-                            -- Hitbox Expander (Reach) - Allows hitting from "afar"
-                            if enemy.HumanoidRootPart.Size.Y < 50 then
-                                enemy.HumanoidRootPart.Size = Vector3.new(50, 50, 50)
-                                enemy.HumanoidRootPart.Transparency = 0.5
+                            local eDist = (enemy.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude
+                            if eDist < 300 then -- Only bring mobs in valid range
+                                enemy.HumanoidRootPart.CanCollide = false
+                                enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0, -10, 0) -- Bring BELOW player
+                                enemy.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+                                enemy.Humanoid.WalkSpeed = 0
+                                enemy.Humanoid.JumpPower = 0
+                                
+                                if enemy.HumanoidRootPart.Size.Y < 50 then
+                                    enemy.HumanoidRootPart.Size = Vector3.new(50, 50, 50)
+                                    enemy.HumanoidRootPart.Transparency = 0.5
+                                end
                             end
                         end
                     end
