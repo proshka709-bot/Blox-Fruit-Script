@@ -1,9 +1,9 @@
--- [[ LARB SYSTEM v7.1.0 | CHANGELOG v13 ]]
--- Mode: Code (Stability & Hitbox Update)
--- Fixed: "Flying with mobs" (Implemented Stable Hover above target)
--- Fixed: Hit Registration (Aggressive Mob Bring + VirtualUser Auto Attack)
--- Fixed: Physics Glitches (Added PlatformStand & Velocity Lock)
--- Updated: Farm Logic (Now decouples player rotation from mob rotation)
+-- [[ LARB SYSTEM v7.1.0 | CHANGELOG v15 ]]
+-- Mode: Code (ESP & Misc Update)
+-- Added: ESP Distance Display (Real-time meters)
+-- Added: Infinite Jump (Misc Tab)
+-- Added: Fullbright (Misc Tab)
+-- Optimized: ESP Performance (Table-based updates)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -46,6 +46,8 @@ _G.AutoBuyFightingStyle = false
 _G.SelectFightingStyle = "Black Leg"
 _G.AutoBuyHakiColor = false
 _G.AutoBuyLegendarySword = false
+
+_G.SelectWeapon = "Demon Fruit" -- Default to Fruit
 
 -- Data Tables
 local QuestList = {
@@ -178,8 +180,25 @@ local function FindNPC(name)
     return nil
 end
 
--- ESP Functions
+-- ESP System
+local ESPTable = {}
+local RunService = game:GetService("RunService")
+
+RunService.RenderStepped:Connect(function()
+    for i, v in pairs(ESPTable) do
+        if v.Target and v.Target.Parent and v.BillboardGui and v.BillboardGui.Parent then
+            local dist = (LocalPlayer.Character.HumanoidRootPart.Position - v.Target.Position).Magnitude
+            v.TextLabel.Text = v.Name .. " [" .. math.floor(dist) .. "m]"
+        else
+            if v.BillboardGui then v.BillboardGui:Destroy() end
+            table.remove(ESPTable, i)
+        end
+    end
+end)
+
 local function CreateESP(target, name, color)
+    if target:FindFirstChild("ESP") then return end
+
     local BillboardGui = Instance.new("BillboardGui")
     local TextLabel = Instance.new("TextLabel")
     
@@ -196,14 +215,21 @@ local function CreateESP(target, name, color)
     TextLabel.Text = name
     TextLabel.TextColor3 = color
     TextLabel.TextStrokeTransparency = 0
+    
+    table.insert(ESPTable, {
+        Target = target,
+        Name = name,
+        BillboardGui = BillboardGui,
+        TextLabel = TextLabel
+    })
 end
 
--- ESP Loops
-spawn(function()
+-- ESP Finder Loop
+task.spawn(function()
     while task.wait(1) do
         if _G.ESPPlayer then
             for _, v in pairs(Players:GetPlayers()) do
-                if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Head") and not v.Character.Head:FindFirstChild("ESP") then
+                if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Head") then
                     CreateESP(v.Character.Head, v.Name, Color3.new(1, 0, 0))
                 end
             end
@@ -217,18 +243,28 @@ spawn(function()
         
         if _G.ESPChest then
             for _, v in pairs(Workspace:GetChildren()) do
-                if v.Name:find("Chest") and not v:FindFirstChild("ESP") then
+                if v.Name:find("Chest") then
                     CreateESP(v, v.Name, Color3.new(1, 1, 0))
+                end
+            end
+        else
+            for _, v in pairs(Workspace:GetChildren()) do
+                if v.Name:find("Chest") and v:FindFirstChild("ESP") then
+                    v.ESP:Destroy()
                 end
             end
         end
         
         if _G.ESPFruit then
             for _, v in pairs(Workspace:GetChildren()) do
-                if v.Name:find("Fruit") and not v:FindFirstChild("ESP") and v:IsA("Tool") then -- Dropped Fruits
-                     if v:FindFirstChild("Handle") then
-                        CreateESP(v.Handle, v.Name, Color3.new(0, 1, 0))
-                     end
+                if v.Name:find("Fruit") and v:IsA("Tool") and v:FindFirstChild("Handle") then
+                    CreateESP(v.Handle, v.Name, Color3.new(0, 1, 0))
+                end
+            end
+        else
+            for _, v in pairs(Workspace:GetChildren()) do
+                if v.Name:find("Fruit") and v:IsA("Tool") and v:FindFirstChild("Handle") and v.Handle:FindFirstChild("ESP") then
+                    v.Handle.ESP:Destroy()
                 end
             end
         end
@@ -262,13 +298,14 @@ task.spawn(function()
                         local NPC = FindNPC(QuestData[3])
                         if NPC and NPC:FindFirstChild("HumanoidRootPart") then
                             local dist = (HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude
-                            if dist > 8 then
+                            if dist > 10 then -- Increased range slightly
                                 TweenTo(NPC.HumanoidRootPart.CFrame)
                             else
                                 -- Request Specific Quest ID
+                                task.wait(0.5) -- Stability wait
                                 CommF:InvokeServer("StartQuest", QuestData[2], QuestData[6])
                                 CommF:InvokeServer("SetSpawnPoint")
-                                task.wait(0.5)
+                                task.wait(1)
                             end
                         else
                             UpdateStatus("NPC Not Found: " .. QuestData[3])
@@ -297,7 +334,7 @@ task.spawn(function()
                     -- 1. Position Player (Stable Hover)
                     -- Position 7 studs above the enemy to avoid getting stuck, look down at enemy
                     local TargetPos = Target.HumanoidRootPart.Position
-                    local AttackPos = CFrame.new(TargetPos + Vector3.new(0, 7, 0), TargetPos)
+                    local AttackPos = CFrame.new(TargetPos + Vector3.new(0, 10, 0), TargetPos) -- Higher hover to stay safe
                     local Distance = (HumanoidRootPart.Position - AttackPos.Position).Magnitude
                     
                     if Distance > 250 then
@@ -311,21 +348,18 @@ task.spawn(function()
                          end
                     end
                     
-                    -- 2. Bring Mobs (Aggressive & Stable)
-                    -- Bring all valid mobs to a kill zone just below the player
+                    -- 2. Bring Mobs (DISABLED to prevent "Flying away" issues)
+                    -- User requested to fight at spawn. 
+                    -- Only bring mobs if they are VERY close to prevent drifting
                     for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
                         if enemy.Name:find(TargetMobName) and enemy:FindFirstChild("HumanoidRootPart") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
                             local eDist = (enemy.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude
-                            if eDist < 250 then -- Bring range
-                                -- Teleport mob to hitting range (Front of player)
+                            if eDist < 10 then -- Only bring if practically touching
                                 enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0, -4, -2) 
                                 enemy.HumanoidRootPart.CanCollide = false
                                 enemy.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
                                 enemy.Humanoid.WalkSpeed = 0
                                 enemy.Humanoid.JumpPower = 0
-                                if enemy.Humanoid:FindFirstChild("Animator") then
-                                    enemy.Humanoid.Animator:Destroy()
-                                end
                             end
                         end
                     end
@@ -345,18 +379,33 @@ task.spawn(function()
                         end)
                     end
 
-                    -- Equip Weapon
+                    -- Equip Weapon (Priority: Selected Weapon)
                     local Equipped = false
+                    local TargetTool = nil
+                    
                     for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
-                        if tool:IsA("Tool") and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword") then
-                            LocalPlayer.Character.Humanoid:EquipTool(tool)
-                            Equipped = true
-                            break
+                        if tool:IsA("Tool") then
+                            if _G.SelectWeapon == "Demon Fruit" and tool.ToolTip == "Blox Fruit" then
+                                TargetTool = tool
+                                break
+                            elseif _G.SelectWeapon == "Sword" and tool.ToolTip == "Sword" then
+                                TargetTool = tool
+                                break
+                            elseif _G.SelectWeapon == "Melee" and tool.ToolTip == "Melee" then
+                                TargetTool = tool
+                                break
+                            end
                         end
                     end
-                    if not Equipped then
+                    
+                    if TargetTool then
+                        LocalPlayer.Character.Humanoid:EquipTool(TargetTool)
+                        Equipped = true
+                    end
+                    
+                    if not Equipped then -- Fallback to any weapon if specific not found
                          for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
-                            if tool:IsA("Tool") and not tool.Name:find("Fruit") then
+                            if tool:IsA("Tool") and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword" or tool.ToolTip == "Blox Fruit") then
                                 LocalPlayer.Character.Humanoid:EquipTool(tool)
                                 break
                             end
@@ -428,6 +477,15 @@ MainTab:CreateToggle({
    CurrentValue = true,
    Callback = function(Value)
       _G.AutoQuest = Value
+   end,
+})
+
+MainTab:CreateDropdown({
+   Name = "Select Weapon Type",
+   Options = {"Melee", "Sword", "Demon Fruit"},
+   CurrentOption = "Demon Fruit",
+   Callback = function(Option)
+      _G.SelectWeapon = Option
    end,
 })
 
@@ -667,6 +725,48 @@ MiscTab:CreateSlider({
         LocalPlayer.Character.Humanoid.JumpPower = Value
     end,
 })
+
+_G.InfJump = false
+_G.Fullbright = false
+
+MiscTab:CreateToggle({
+   Name = "Infinite Jump",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.InfJump = Value
+   end,
+})
+
+MiscTab:CreateToggle({
+   Name = "Fullbright",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.Fullbright = Value
+      if not Value then
+          game:GetService("Lighting").Brightness = 1
+          game:GetService("Lighting").ClockTime = 12
+          game:GetService("Lighting").FogEnd = 10000
+          game:GetService("Lighting").GlobalShadows = true
+      end
+   end,
+})
+
+game:GetService("UserInputService").JumpRequest:Connect(function()
+    if _G.InfJump then
+        LocalPlayer.Character:FindFirstChildOfClass('Humanoid'):ChangeState("Jumping")
+    end
+end)
+
+spawn(function()
+    while task.wait(1) do
+        if _G.Fullbright then
+            game:GetService("Lighting").Brightness = 2
+            game:GetService("Lighting").ClockTime = 14
+            game:GetService("Lighting").FogEnd = 100000
+            game:GetService("Lighting").GlobalShadows = false
+        end
+    end
+end)
 
 -- WalkSpeed Loop (To prevent override)
 spawn(function()
