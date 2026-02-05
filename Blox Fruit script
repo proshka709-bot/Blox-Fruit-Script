@@ -58,8 +58,8 @@ local QuestList = {
     {90, "SnowQuest", "Snow Quest Giver", "Snow Bandit", 90},
     {105, "SnowQuest", "Snow Quest Giver", "Snowman", 100},
     {120, "MarineQuest2", "Marine Quest Giver", "Chief Petty Officer", 120},
-    {130, "SkyExp1Quest", "Sky Quest Giver", "Sky Bandit", 150},
-    {150, "SkyExp1Quest", "Sky Quest Giver", "Dark Master", 175},
+    {130, "SkyExp1Quest", "Sky Adventurer", "Sky Bandit", 150},
+    {150, "SkyExp1Quest", "Sky Adventurer", "Dark Master", 175},
     {175, "ColosseumQuest", "Quest Giver", "Toga Warrior", 180},
     {190, "ColosseumQuest", "Quest Giver", "Gladiator", 200},
     -- Prison
@@ -74,9 +74,9 @@ local QuestList = {
     {375, "FishmanQuest", "Fishman Quest Giver", "Fishman Warrior", 375},
     {400, "FishmanQuest", "Fishman Quest Giver", "Fishman Commando", 400},
     -- Skylands Upper Yard
-    {450, "SkyExp2Quest", "Sky Quest Giver", "God's Guard", 450},
-    {475, "SkyExp2Quest", "Sky Quest Giver", "Shanda", 475},
-    {500, "SkyExp2Quest", "Sky Quest Giver", "Wysper", 500},
+    {450, "SkyExp2Quest", "Sky Adventurer", "God's Guard", 450},
+    {475, "SkyExp2Quest", "Sky Adventurer", "Shanda", 475},
+    {500, "SkyExp2Quest", "Sky Adventurer", "Wysper", 500},
     -- Fountain City
     {625, "FountainQuest", "Fountain Quest Giver", "Galley Pirate", 625},
 }
