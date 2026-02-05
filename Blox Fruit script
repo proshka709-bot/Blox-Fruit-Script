@@ -1,7 +1,9 @@
--- [[ LARB SYSTEM v7.1.0 | CHANGELOG v9 ]]
--- Mode: Code (Security & Logic Patches)
--- Security: Reduced Mob Bring radius (150), VirtualInputManager implementation
--- Logic: Quest validation check, Smart Weapon Equip (Anti-Fruit-Eat)
+-- [[ LARB SYSTEM v7.1.0 | CHANGELOG v13 ]]
+-- Mode: Code (Stability & Hitbox Update)
+-- Fixed: "Flying with mobs" (Implemented Stable Hover above target)
+-- Fixed: Hit Registration (Aggressive Mob Bring + VirtualUser Auto Attack)
+-- Fixed: Physics Glitches (Added PlatformStand & Velocity Lock)
+-- Updated: Farm Logic (Now decouples player rotation from mob rotation)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -47,38 +49,38 @@ _G.AutoBuyLegendarySword = false
 
 -- Data Tables
 local QuestList = {
-    -- Format: {LevelReq, QuestName, QuestGiverName, MobName, MobLevel}
-    {0, "BanditQuest1", "Bandit Quest Giver", "Bandit", 5},
-    {10, "JungleQuest", "Monkey Quest Giver", "Monkey", 14},
-    {15, "JungleQuest", "Monkey Quest Giver", "Gorilla", 20},
-    {30, "BuggyQuest1", "Pirate Adventurer", "Pirate", 35}, 
-    {40, "BuggyQuest1", "Pirate Adventurer", "Brute", 45},
-    {60, "DesertQuest", "Desert Adventurer", "Desert Bandit", 60},
-    {75, "DesertQuest", "Desert Adventurer", "Desert Officer", 70},
-    {90, "SnowQuest", "Snow Quest Giver", "Snow Bandit", 90},
-    {105, "SnowQuest", "Snow Quest Giver", "Snowman", 100},
-    {120, "MarineQuest2", "Marine Quest Giver", "Chief Petty Officer", 120},
-    {130, "SkyExp1Quest", "Sky Adventurer", "Sky Bandit", 150},
-    {150, "SkyExp1Quest", "Sky Adventurer", "Dark Master", 175},
-    {175, "ColosseumQuest", "Quest Giver", "Toga Warrior", 180},
-    {190, "ColosseumQuest", "Quest Giver", "Gladiator", 200},
+    -- Format: {LevelReq, QuestName, QuestGiverName, MobName, MobLevel, QuestID}
+    {0, "BanditQuest1", "Bandit Quest Giver", "Bandit", 5, 1},
+    {10, "JungleQuest", "Monkey Quest Giver", "Monkey", 14, 1},
+    {15, "JungleQuest", "Monkey Quest Giver", "Gorilla", 20, 2},
+    {30, "BuggyQuest1", "Pirate Adventurer", "Pirate", 35, 1}, 
+    {40, "BuggyQuest1", "Pirate Adventurer", "Brute", 45, 2},
+    {60, "DesertQuest", "Desert Adventurer", "Desert Bandit", 60, 1},
+    {75, "DesertQuest", "Desert Adventurer", "Desert Officer", 70, 2},
+    {90, "SnowQuest", "Snow Quest Giver", "Snow Bandit", 90, 1},
+    {105, "SnowQuest", "Snow Quest Giver", "Snowman", 100, 2},
+    {120, "MarineQuest2", "Marine Quest Giver", "Chief Petty Officer", 120, 1},
+    {130, "SkyExp1Quest", "Sky Adventurer", "Sky Bandit", 150, 1},
+    {150, "SkyExp1Quest", "Sky Adventurer", "Dark Master", 175, 2},
+    {175, "ColosseumQuest", "Quest Giver", "Toga Warrior", 180, 1},
+    {190, "ColosseumQuest", "Quest Giver", "Gladiator", 200, 2},
     -- Prison
-    {220, "PrisonerQuest", "Prisoner Quest Giver", "Warden", 220},
-    {230, "PrisonerQuest", "Prisoner Quest Giver", "Chief Warden", 230},
-    {240, "PrisonerQuest", "Prisoner Quest Giver", "Swan", 240},
+    {220, "PrisonerQuest", "Prisoner Quest Giver", "Warden", 220, 1},
+    {230, "PrisonerQuest", "Prisoner Quest Giver", "Chief Warden", 230, 2},
+    {240, "PrisonerQuest", "Prisoner Quest Giver", "Swan", 240, 3},
     -- Magma Village
-    {300, "MagmaQuest", "Magma Quest Giver", "Military Soldier", 300},
-    {325, "MagmaQuest", "Magma Quest Giver", "Military Spy", 325},
-    {350, "MagmaQuest", "Magma Quest Giver", "Magma Admiral", 350},
+    {300, "MagmaQuest", "Magma Quest Giver", "Military Soldier", 300, 1},
+    {325, "MagmaQuest", "Magma Quest Giver", "Military Spy", 325, 2},
+    {350, "MagmaQuest", "Magma Quest Giver", "Magma Admiral", 350, 3},
     -- Underwater City
-    {375, "FishmanQuest", "Fishman Quest Giver", "Fishman Warrior", 375},
-    {400, "FishmanQuest", "Fishman Quest Giver", "Fishman Commando", 400},
+    {375, "FishmanQuest", "Fishman Quest Giver", "Fishman Warrior", 375, 1},
+    {400, "FishmanQuest", "Fishman Quest Giver", "Fishman Commando", 400, 2},
     -- Skylands Upper Yard
-    {450, "SkyExp2Quest", "Sky Adventurer", "God's Guard", 450},
-    {475, "SkyExp2Quest", "Sky Adventurer", "Shanda", 475},
-    {500, "SkyExp2Quest", "Sky Adventurer", "Wysper", 500},
+    {450, "SkyExp2Quest", "Sky Adventurer", "God's Guard", 450, 1},
+    {475, "SkyExp2Quest", "Sky Adventurer", "Shanda", 475, 2},
+    {500, "SkyExp2Quest", "Sky Adventurer", "Wysper", 500, 3},
     -- Fountain City
-    {625, "FountainQuest", "Fountain Quest Giver", "Galley Pirate", 625},
+    {625, "FountainQuest", "Fountain Quest Giver", "Galley Pirate", 625, 1},
 }
 
 -- Services
@@ -234,7 +236,10 @@ spawn(function()
 end)
 
 -- Main Loop
-spawn(function()
+task.spawn(function()
+    -- Wait for Level Data to load
+    repeat task.wait() until LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("Level") and LocalPlayer.Data.Level.Value > 0
+    
     while task.wait() do
         if _G.AutoFarm then
             pcall(function()
@@ -245,78 +250,34 @@ spawn(function()
                 local QuestData = GetCurrentQuestData()
                 local TargetMobName = nil
                 
-                -- 1. Check Active Quest
                 if CheckActiveQuest() then
                     TargetMobName = GetActiveQuestTarget()
                     if not TargetMobName and QuestData then
-                         -- Fallback: Use level-based quest mob if parsing fails
-                         TargetMobName = QuestData[4] 
+                         TargetMobName = QuestData[4]
                     end
+                    UpdateStatus("Farming " .. (TargetMobName or "Unknown") .. " (Lv: " .. LocalPlayer.Data.Level.Value .. ")")
                 else
-                    -- No Quest Active
-                    if _G.AutoQuest then
-                        if not QuestData then 
-                            UpdateStatus("Level Too Low / No Quest Found")
-                            return 
-                        end
-                        
-                        UpdateStatus("Getting Quest: " .. QuestData[2])
+                    UpdateStatus("Getting Quest (Lv: " .. LocalPlayer.Data.Level.Value .. ")")
+                    if QuestData then
                         local NPC = FindNPC(QuestData[3])
-                        
                         if NPC and NPC:FindFirstChild("HumanoidRootPart") then
                             local dist = (HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude
                             if dist > 8 then
                                 TweenTo(NPC.HumanoidRootPart.CFrame)
                             else
-                                -- Spam Request when close
-                                CommF:InvokeServer("StartQuest", QuestData[2], 1)
+                                -- Request Specific Quest ID
+                                CommF:InvokeServer("StartQuest", QuestData[2], QuestData[6])
                                 CommF:InvokeServer("SetSpawnPoint")
                                 task.wait(0.5)
                             end
                         else
-                             UpdateStatus("NPC Not Found: " .. QuestData[3])
-                             -- Try searching by partial name in Workspace
-                             local found = false
-                             for _, v in pairs(Workspace:GetChildren()) do
-                                 if v.Name:find(QuestData[3]) and v:FindFirstChild("HumanoidRootPart") then
-                                      TweenTo(v.HumanoidRootPart.CFrame)
-                                      found = true
-                                      break
-                                 end
-                             end
-                             if not found then
-                                 -- Desperate measure: Try StartQuest anyway (sometimes works if cached)
-                                 CommF:InvokeServer("StartQuest", QuestData[2], 1)
-                             end
+                            UpdateStatus("NPC Not Found: " .. QuestData[3])
                         end
-                        return -- Stop loop to focus on getting quest
-                    else
-                         UpdateStatus("Auto Quest Disabled")
                     end
                 end
 
                 if not TargetMobName then
-                     UpdateStatus("Waiting for Quest...")
                      return 
-                end
-
-                UpdateStatus("Farming: " .. TargetMobName)
-
-                -- 2. Mob Farming
-                -- Bring Mobs (Safe Mode - Reduced Range)
-                for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
-                    if enemy.Name:find(TargetMobName) and enemy:FindFirstChild("HumanoidRootPart") and (enemy.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude < 150 then
-                        enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0,0,-5)
-                        enemy.HumanoidRootPart.CanCollide = false
-                        if enemy:FindFirstChild("Humanoid") then
-                            enemy.Humanoid.WalkSpeed = 0
-                            enemy.Humanoid.JumpPower = 0
-                            -- Stun mod
-                            if enemy.Humanoid:FindFirstChild("Animator") then
-                                enemy.Humanoid.Animator:Destroy()
-                            end
-                        end
-                    end
                 end
 
                 -- Find Closest Target
@@ -333,22 +294,45 @@ spawn(function()
                 end
                     
                 if Target then
-                    -- Teleport/Tween to Mob
-                    local AttackPos = Target.HumanoidRootPart.CFrame * CFrame.new(0, 5, 0)
+                    -- 1. Position Player (Stable Hover)
+                    -- Position 7 studs above the enemy to avoid getting stuck, look down at enemy
+                    local TargetPos = Target.HumanoidRootPart.Position
+                    local AttackPos = CFrame.new(TargetPos + Vector3.new(0, 7, 0), TargetPos)
                     local Distance = (HumanoidRootPart.Position - AttackPos.Position).Magnitude
                     
                     if Distance > 250 then
                          TweenTo(AttackPos)
-                    elseif Distance > 10 then
-                         HumanoidRootPart.CFrame = AttackPos
                     else
-                         -- Lock on
+                         -- Stable Lock: Set CFrame directly without tweening for instant response
                          HumanoidRootPart.CFrame = AttackPos
+                         HumanoidRootPart.Velocity = Vector3.new(0,0,0) -- Stop physics drift
+                         if Character:FindFirstChild("Humanoid") then
+                             Character.Humanoid.PlatformStand = true -- Prevent falling animation
+                         end
                     end
                     
-                    -- Fast Attack (VirtualInputManager)
-                    game:GetService("VirtualInputManager"):SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                    game:GetService("VirtualInputManager"):SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                    -- 2. Bring Mobs (Aggressive & Stable)
+                    -- Bring all valid mobs to a kill zone just below the player
+                    for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
+                        if enemy.Name:find(TargetMobName) and enemy:FindFirstChild("HumanoidRootPart") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
+                            local eDist = (enemy.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude
+                            if eDist < 250 then -- Bring range
+                                -- Teleport mob to hitting range (Front of player)
+                                enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0, -4, -2) 
+                                enemy.HumanoidRootPart.CanCollide = false
+                                enemy.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+                                enemy.Humanoid.WalkSpeed = 0
+                                enemy.Humanoid.JumpPower = 0
+                                if enemy.Humanoid:FindFirstChild("Animator") then
+                                    enemy.Humanoid.Animator:Destroy()
+                                end
+                            end
+                        end
+                    end
+                    
+                    -- 3. Auto Attack (Ensure Hits)
+                    game:GetService("VirtualUser"):CaptureController()
+                    game:GetService("VirtualUser"):ClickButton1(Vector2.new(0, 0))
                     
                     -- Auto Skills
                     if _G.AutoSkills then
@@ -361,7 +345,7 @@ spawn(function()
                         end)
                     end
 
-                    -- Equip Weapon (Smart Equip)
+                    -- Equip Weapon
                     local Equipped = false
                     for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
                         if tool:IsA("Tool") and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword") then
@@ -380,9 +364,16 @@ spawn(function()
                     end
                 else
                      UpdateStatus("Mob Not Found: " .. TargetMobName)
-                     -- Maybe teleport to spawn location of mob?
+                     -- Check for Spawns
+                     if _G.AutoFarm then
+                        -- Optional: Teleport to spawn area if known (omitted for now to keep simple)
+                     end
                 end
             end)
+        else
+            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+                 LocalPlayer.Character.Humanoid.PlatformStand = false
+            end
         end
     end
 end)
