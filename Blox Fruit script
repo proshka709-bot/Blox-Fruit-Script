@@ -1,6 +1,6 @@
 --[[
     VETA HUB - BLOX FRUITS GOD MODE
-    Version: 5.5 (Fixed UI + Infinite Range)
+    Version: 6.0 (UI Remaster + Advanced ESP + AutoFarm Fix)
     Author: VETA AI
 ]]
 
@@ -11,419 +11,23 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualUser = game:GetService("VirtualUser")
+local VirtualInputManager = game:GetService("VirtualInputManager")
 local HttpService = game:GetService("HttpService")
 
 local Player = Players.LocalPlayer
 local Mouse = Player:GetMouse()
 
---// PROTECT GUI
-local Viewport = CoreGui
-
---// VETA UI LIBRARY
-local Library = {}
+--// UI CONFIGURATION
 local UIConfig = {
-    MainColor = Color3.fromRGB(85, 85, 255),
-    BackgroundColor = Color3.fromRGB(25, 25, 25),
-    SecondaryColor = Color3.fromRGB(35, 35, 35),
-    TextColor = Color3.fromRGB(240, 240, 240),
+    MainColor = Color3.fromRGB(0, 120, 255), -- Bright Blue
+    Background = Color3.fromRGB(20, 20, 30), -- Dark Blue-Grey
+    Sidebar = Color3.fromRGB(15, 15, 25),
+    Text = Color3.fromRGB(255, 255, 255),
     Font = Enum.Font.GothamBold,
-    CornerRadius = UDim.new(0, 8)
+    Transparency = 0.1
 }
 
-function Library:Tween(obj, props, time)
-    local info = TweenInfo.new(time or 0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-    local tween = TweenService:Create(obj, info, props)
-    tween:Play()
-    return tween
-end
-
-function Library:CreateWindow(name)
-    local ScreenGui = Instance.new("ScreenGui")
-    ScreenGui.Name = "VetaHub"
-    ScreenGui.Parent = Viewport
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-    -- Open/Close Button (Mobile Friendly)
-    local OpenBtn = Instance.new("TextButton")
-    OpenBtn.Name = "OpenButton"
-    OpenBtn.Parent = ScreenGui
-    OpenBtn.BackgroundColor3 = UIConfig.MainColor
-    OpenBtn.Position = UDim2.new(0.1, 0, 0.1, 0)
-    OpenBtn.Size = UDim2.new(0, 50, 0, 50)
-    OpenBtn.Font = Enum.Font.GothamBlack
-    OpenBtn.Text = "V"
-    OpenBtn.TextColor3 = Color3.new(1,1,1)
-    OpenBtn.TextSize = 24
-    
-    local OpenCorner = Instance.new("UICorner")
-    OpenCorner.CornerRadius = UDim.new(1, 0) -- Circle
-    OpenCorner.Parent = OpenBtn
-    
-    -- Draggable Open Button
-    local dragging, dragInput, dragStart, startPos
-    OpenBtn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = OpenBtn.Position
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-    OpenBtn.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            OpenBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Name = "MainFrame"
-    MainFrame.Parent = ScreenGui
-    MainFrame.BackgroundColor3 = UIConfig.BackgroundColor
-    MainFrame.Position = UDim2.new(0.5, -300, 0.5, -200)
-    MainFrame.Size = UDim2.new(0, 600, 0, 400)
-    MainFrame.ClipsDescendants = true
-    
-    local UICorner = Instance.new("UICorner")
-    UICorner.CornerRadius = UIConfig.CornerRadius
-    UICorner.Parent = MainFrame
-    
-    -- Opening Animation
-    MainFrame.Size = UDim2.new(0, 0, 0, 0)
-    MainFrame.Visible = false
-    
-    local isMinimised = true
-    
-    local function ToggleUI()
-        if isMinimised then
-            MainFrame.Visible = true
-            Library:Tween(MainFrame, {Size = UDim2.new(0, 600, 0, 400)}, 0.5)
-            isMinimised = false
-        else
-            Library:Tween(MainFrame, {Size = UDim2.new(0, 0, 0, 0)}, 0.5)
-            task.wait(0.5)
-            if isMinimised then MainFrame.Visible = false end -- Check again in case spammed
-            isMinimised = true
-        end
-    end
-    
-    OpenBtn.MouseButton1Click:Connect(ToggleUI)
-    
-    -- Close Button inside UI
-    local CloseBtn = Instance.new("TextButton")
-    CloseBtn.Parent = MainFrame
-    CloseBtn.BackgroundTransparency = 1
-    CloseBtn.Position = UDim2.new(1, -35, 0, 5)
-    CloseBtn.Size = UDim2.new(0, 30, 0, 30)
-    CloseBtn.Font = Enum.Font.GothamBlack
-    CloseBtn.Text = "X"
-    CloseBtn.TextColor3 = Color3.fromRGB(200, 50, 50)
-    CloseBtn.TextSize = 20
-    CloseBtn.ZIndex = 10
-    
-    CloseBtn.MouseButton1Click:Connect(ToggleUI)
-    
-    -- Initial Open
-    ToggleUI()
-
-    -- Dragging MainFrame
-    local Dragging, DragInput, DragStart, StartPos
-    MainFrame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            Dragging = true
-            DragStart = input.Position
-            StartPos = MainFrame.Position
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    Dragging = false
-                end
-            end)
-        end
-    end)
-    
-    MainFrame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement then
-            DragInput = input
-        end
-    end)
-    
-    UserInputService.InputChanged:Connect(function(input)
-        if input == DragInput and Dragging then
-            local Delta = input.Position - DragStart
-            Library:Tween(MainFrame, {Position = UDim2.new(StartPos.X.Scale, StartPos.X.Offset + Delta.X, StartPos.Y.Scale, StartPos.Y.Offset + Delta.Y)}, 0.1)
-        end
-    end)
-
-    -- Sidebar
-    local Sidebar = Instance.new("Frame")
-    Sidebar.Name = "Sidebar"
-    Sidebar.Parent = MainFrame
-    Sidebar.BackgroundColor3 = UIConfig.SecondaryColor
-    Sidebar.Size = UDim2.new(0, 150, 1, 0)
-    
-    local SidebarCorner = Instance.new("UICorner")
-    SidebarCorner.CornerRadius = UIConfig.CornerRadius
-    SidebarCorner.Parent = Sidebar
-
-    local Title = Instance.new("TextLabel")
-    Title.Parent = Sidebar
-    Title.BackgroundTransparency = 1
-    Title.Position = UDim2.new(0, 0, 0, 20)
-    Title.Size = UDim2.new(1, 0, 0, 30)
-    Title.Font = Enum.Font.GothamBlack
-    Title.Text = "VETA HUB"
-    Title.TextColor3 = UIConfig.MainColor
-    Title.TextSize = 22
-    
-    local TabContainer = Instance.new("ScrollingFrame")
-    TabContainer.Parent = Sidebar
-    TabContainer.BackgroundTransparency = 1
-    TabContainer.Position = UDim2.new(0, 10, 0, 70)
-    TabContainer.Size = UDim2.new(1, -20, 1, -80)
-    TabContainer.ScrollBarThickness = 0
-    
-    local UIListLayout = Instance.new("UIListLayout")
-    UIListLayout.Parent = TabContainer
-    UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    UIListLayout.Padding = UDim.new(0, 10)
-
-    -- Content Area
-    local ContentArea = Instance.new("Frame")
-    ContentArea.Name = "ContentArea"
-    ContentArea.Parent = MainFrame
-    ContentArea.BackgroundColor3 = Color3.fromRGB(0,0,0)
-    ContentArea.BackgroundTransparency = 1
-    ContentArea.Position = UDim2.new(0, 160, 0, 10)
-    ContentArea.Size = UDim2.new(1, -170, 1, -20)
-
-    local Window = {}
-    local Tabs = {}
-    local FirstTab = true
-
-    function Window:Tab(icon, text)
-        local TabBtn = Instance.new("TextButton")
-        TabBtn.Parent = TabContainer
-        TabBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-        TabBtn.Size = UDim2.new(1, 0, 0, 35)
-        TabBtn.Font = UIConfig.Font
-        TabBtn.Text = text
-        TabBtn.TextColor3 = UIConfig.TextColor
-        TabBtn.TextSize = 14
-        TabBtn.AutoButtonColor = false
-        
-        local BtnCorner = Instance.new("UICorner")
-        BtnCorner.CornerRadius = UDim.new(0, 6)
-        BtnCorner.Parent = TabBtn
-
-        local TabPage = Instance.new("ScrollingFrame")
-        TabPage.Name = text .. "Page"
-        TabPage.Parent = ContentArea
-        TabPage.BackgroundTransparency = 1
-        TabPage.Size = UDim2.new(1, 0, 1, 0)
-        TabPage.ScrollBarThickness = 2
-        TabPage.Visible = FirstTab
-        
-        local PageLayout = Instance.new("UIListLayout")
-        PageLayout.Parent = TabPage
-        PageLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        PageLayout.Padding = UDim.new(0, 10)
-        
-        if FirstTab then
-            TabBtn.BackgroundColor3 = UIConfig.MainColor
-            FirstTab = false
-        end
-        
-        TabBtn.MouseButton1Click:Connect(function()
-            for _, t in pairs(ContentArea:GetChildren()) do t.Visible = false end
-            TabPage.Visible = true
-            
-            for _, b in pairs(TabContainer:GetChildren()) do
-                if b:IsA("TextButton") then
-                    Library:Tween(b, {BackgroundColor3 = Color3.fromRGB(45, 45, 45)})
-                end
-            end
-            Library:Tween(TabBtn, {BackgroundColor3 = UIConfig.MainColor})
-        end)
-        
-        local TabFunctions = {}
-        
-        function TabFunctions:Toggle(text, default, callback)
-            local ToggleFrame = Instance.new("Frame")
-            ToggleFrame.Parent = TabPage
-            ToggleFrame.BackgroundColor3 = UIConfig.SecondaryColor
-            ToggleFrame.Size = UDim2.new(1, -5, 0, 40)
-            
-            local TCorner = Instance.new("UICorner")
-            TCorner.CornerRadius = UDim.new(0, 6)
-            TCorner.Parent = ToggleFrame
-            
-            local TText = Instance.new("TextLabel")
-            TText.Parent = ToggleFrame
-            TText.BackgroundTransparency = 1
-            TText.Position = UDim2.new(0, 15, 0, 0)
-            TText.Size = UDim2.new(0.7, 0, 1, 0)
-            TText.Font = UIConfig.Font
-            TText.Text = text
-            TText.TextColor3 = UIConfig.TextColor
-            TText.TextXAlignment = Enum.TextXAlignment.Left
-            TText.TextSize = 14
-            
-            local Switch = Instance.new("TextButton")
-            Switch.Parent = ToggleFrame
-            Switch.BackgroundColor3 = default and UIConfig.MainColor or Color3.fromRGB(60, 60, 60)
-            Switch.Position = UDim2.new(1, -50, 0.5, -10)
-            Switch.Size = UDim2.new(0, 40, 0, 20)
-            Switch.Text = ""
-            
-            local SCorner = Instance.new("UICorner")
-            SCorner.CornerRadius = UDim.new(1, 0)
-            SCorner.Parent = Switch
-            
-            local Circle = Instance.new("Frame")
-            Circle.Parent = Switch
-            Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-            Circle.Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-            Circle.Size = UDim2.new(0, 16, 0, 16)
-            
-            local CCorner = Instance.new("UICorner")
-            CCorner.CornerRadius = UDim.new(1, 0)
-            CCorner.Parent = Circle
-            
-            local enabled = default
-            Switch.MouseButton1Click:Connect(function()
-                enabled = not enabled
-                
-                if enabled then
-                    Library:Tween(Switch, {BackgroundColor3 = UIConfig.MainColor})
-                    Library:Tween(Circle, {Position = UDim2.new(1, -18, 0.5, -8)})
-                else
-                    Library:Tween(Switch, {BackgroundColor3 = Color3.fromRGB(60, 60, 60)})
-                    Library:Tween(Circle, {Position = UDim2.new(0, 2, 0.5, -8)})
-                end
-                
-                pcall(callback, enabled)
-            end)
-        end
-        
-        function TabFunctions:Button(text, callback)
-            local Btn = Instance.new("TextButton")
-            Btn.Parent = TabPage
-            Btn.BackgroundColor3 = UIConfig.SecondaryColor
-            Btn.Size = UDim2.new(1, -5, 0, 40)
-            Btn.Font = UIConfig.Font
-            Btn.Text = text
-            Btn.TextColor3 = UIConfig.TextColor
-            Btn.TextSize = 14
-            Btn.AutoButtonColor = false
-            
-            local BCorner = Instance.new("UICorner")
-            BCorner.CornerRadius = UDim.new(0, 6)
-            BCorner.Parent = Btn
-            
-            Btn.MouseButton1Click:Connect(function()
-                Library:Tween(Btn, {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}, 0.1)
-                task.wait(0.1)
-                Library:Tween(Btn, {BackgroundColor3 = UIConfig.SecondaryColor}, 0.1)
-                pcall(callback)
-            end)
-        end
-        
-        function TabFunctions:Dropdown(text, options, callback)
-            local DropFrame = Instance.new("Frame")
-            DropFrame.Parent = TabPage
-            DropFrame.BackgroundColor3 = UIConfig.SecondaryColor
-            DropFrame.Size = UDim2.new(1, -5, 0, 40)
-            DropFrame.ClipsDescendants = true
-            
-            local DCorner = Instance.new("UICorner")
-            DCorner.CornerRadius = UDim.new(0, 6)
-            DCorner.Parent = DropFrame
-            
-            local DText = Instance.new("TextLabel")
-            DText.Parent = DropFrame
-            DText.BackgroundTransparency = 1
-            DText.Position = UDim2.new(0, 15, 0, 0)
-            DText.Size = UDim2.new(0.7, 0, 0, 40)
-            DText.Font = UIConfig.Font
-            DText.Text = text
-            DText.TextColor3 = UIConfig.TextColor
-            DText.TextXAlignment = Enum.TextXAlignment.Left
-            DText.TextSize = 14
-            
-            local ToggleBtn = Instance.new("TextButton")
-            ToggleBtn.Parent = DropFrame
-            ToggleBtn.BackgroundTransparency = 1
-            ToggleBtn.Size = UDim2.new(1, 0, 0, 40)
-            ToggleBtn.Text = ""
-            
-            local List = Instance.new("UIListLayout")
-            List.Parent = DropFrame
-            List.SortOrder = Enum.SortOrder.LayoutOrder
-            List.Padding = UDim.new(0, 5)
-            
-            local open = false
-            local currentVal = options[1]
-            
-            ToggleBtn.MouseButton1Click:Connect(function()
-                open = not open
-                if open then
-                    Library:Tween(DropFrame, {Size = UDim2.new(1, -5, 0, 40 + (#options * 30) + 10)})
-                else
-                    Library:Tween(DropFrame, {Size = UDim2.new(1, -5, 0, 40)})
-                end
-            end)
-            
-            -- Padding for list
-            local pad = Instance.new("Frame")
-            pad.Parent = DropFrame
-            pad.BackgroundTransparency = 1
-            pad.Size = UDim2.new(1, 0, 0, 5)
-            pad.LayoutOrder = 1
-            
-            for i, opt in ipairs(options) do
-                local OptBtn = Instance.new("TextButton")
-                OptBtn.Parent = DropFrame
-                OptBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-                OptBtn.Size = UDim2.new(1, -20, 0, 25)
-                OptBtn.Position = UDim2.new(0, 10, 0, 0)
-                OptBtn.Font = UIConfig.Font
-                OptBtn.Text = opt
-                OptBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-                OptBtn.TextSize = 12
-                OptBtn.LayoutOrder = i + 1
-                
-                local OCorner = Instance.new("UICorner")
-                OCorner.CornerRadius = UDim.new(0, 4)
-                OCorner.Parent = OptBtn
-                
-                OptBtn.MouseButton1Click:Connect(function()
-                    currentVal = opt
-                    DText.Text = text .. ": " .. opt
-                    open = false
-                    Library:Tween(DropFrame, {Size = UDim2.new(1, -5, 0, 40)})
-                    callback(opt)
-                end)
-            end
-        end
-
-        return TabFunctions
-    end
-    
-    return Window
-end
-
---// GAME LOGIC VARIABLES
+--// GAME VARIABLES
 _G.Config = {
     AutoFarm = false,
     AutoStats = false,
@@ -433,11 +37,14 @@ _G.Config = {
     ESP = false,
     FruitESP = false,
     ChestESP = false,
-    SelectedWeapon = "Melee" -- Melee, Sword, Blox Fruit
+    SelectedWeapon = "Melee", -- Can be specific tool name
+    RefreshWeapons = false
 }
 
+local CurrentStatus = "Waiting..."
+
+--// QUEST DATA (EXPANDED)
 local QuestData = {
-    -- Sea 1 Quests (Simplified List for Stability)
     {Lvl = 0, NPC = "Bandit Quest Giver", Mob = "Bandit", Quest = "BanditQuest1"},
     {Lvl = 10, NPC = "Monkey Quest Giver", Mob = "Monkey", Quest = "JungleQuest"},
     {Lvl = 15, NPC = "Gorilla Quest Giver", Mob = "Gorilla", Quest = "JungleQuest"},
@@ -467,7 +74,41 @@ local QuestData = {
     {Lvl = 650, NPC = "Galley Captain", Mob = "Galley Captain", Quest = "FountainQuest"}
 }
 
---// FUNCTIONS
+--// HELPER FUNCTIONS
+local function UpdateStatus(text)
+    CurrentStatus = text
+end
+
+local function GetWeaponList()
+    local weapons = {}
+    if Player.Backpack then
+        for _, v in pairs(Player.Backpack:GetChildren()) do
+            if v:IsA("Tool") then
+                table.insert(weapons, v.Name)
+            end
+        end
+    end
+    if Player.Character then
+        for _, v in pairs(Player.Character:GetChildren()) do
+            if v:IsA("Tool") then
+                table.insert(weapons, v.Name)
+            end
+        end
+    end
+    return weapons
+end
+
+local function EquipWeapon(name)
+    local Backpack = Player.Backpack
+    local Char = Player.Character
+    
+    if Char and Char:FindFirstChild(name) then return end -- Already equipped
+    
+    if Backpack and Backpack:FindFirstChild(name) then
+        Char.Humanoid:EquipTool(Backpack[name])
+    end
+end
+
 local function CheckQuest()
     local MyLvl = Player.Data.Level.Value
     local BestQuest = QuestData[1]
@@ -480,29 +121,12 @@ local function CheckQuest()
     return BestQuest
 end
 
-local function EquipWeapon(type)
-    local Backpack = Player.Backpack
-    local Char = Player.Character
-    local Weapon = nil
-    
-    if type == "Melee" then
-        Weapon = Backpack:FindFirstChild("Combat") or Backpack:FindFirstChild("Black Leg") or Backpack:FindFirstChild("Electro") or Backpack:FindFirstChild("Fishman Karate") or Backpack:FindFirstChild("Dragon Claw") or Backpack:FindFirstChild("Superhuman") or Backpack:FindFirstChild("Death Step") or Backpack:FindFirstChild("Sharkman Karate") or Backpack:FindFirstChild("Electric Claw") or Backpack:FindFirstChild("Dragon Talon") or Backpack:FindFirstChild("Godhuman")
-    elseif type == "Sword" then
-        for _, v in pairs(Backpack:GetChildren()) do
-            if v:IsA("Tool") and v.ToolTip == "Sword" then Weapon = v break end
-        end
-    end
-    
-    if Weapon then
-        Player.Character.Humanoid:EquipTool(Weapon)
-    end
-end
-
 local function Tween(TargetCF)
     if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return end
     
-    -- BodyVelocity to prevent falling/flinging
     local HRP = Player.Character.HumanoidRootPart
+    
+    -- Anti-Fall
     if not HRP:FindFirstChild("VetaFly") then
         local BV = Instance.new("BodyVelocity")
         BV.Name = "VetaFly"
@@ -512,221 +136,520 @@ local function Tween(TargetCF)
     end
     
     local Distance = (HRP.Position - TargetCF.Position).Magnitude
-    local Speed = 300 -- Speed
+    local Speed = 350
     local Time = Distance / Speed
     
     local TInfo = TweenInfo.new(Time, Enum.EasingStyle.Linear)
     local Tween = TweenService:Create(HRP, TInfo, {CFrame = TargetCF})
     Tween:Play()
     
-    -- Noclip during tween
+    -- Noclip
     for _, v in pairs(Player.Character:GetChildren()) do
         if v:IsA("BasePart") then v.CanCollide = false end
     end
     
-    return Tween
+    return Tween, Time
 end
 
---// MAIN UI SETUP
-local Win = Library:CreateWindow("VETA HUB | Blox Fruits")
+--// VETA UI LIBRARY (REMASTERED)
+local Library = {}
 
--- TAB 1: FARM
-local FarmTab = Win:Tab("rbxassetid://1", "Auto Farm")
+function Library:CreateWindow(name)
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "VetaHub_V6"
+    ScreenGui.Parent = CoreGui
+    ScreenGui.ResetOnSpawn = false
+
+    -- Open/Close Button
+    local OpenBtn = Instance.new("TextButton")
+    OpenBtn.Name = "OpenButton"
+    OpenBtn.Parent = ScreenGui
+    OpenBtn.BackgroundColor3 = UIConfig.MainColor
+    OpenBtn.Position = UDim2.new(0, 20, 0.5, -25)
+    OpenBtn.Size = UDim2.new(0, 50, 0, 50)
+    OpenBtn.Font = UIConfig.Font
+    OpenBtn.Text = "V"
+    OpenBtn.TextColor3 = Color3.new(1,1,1)
+    OpenBtn.TextSize = 24
+    
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(1, 0)
+    UICorner.Parent = OpenBtn
+    
+    local UIStroke = Instance.new("UIStroke")
+    UIStroke.Parent = OpenBtn
+    UIStroke.Color = Color3.new(1,1,1)
+    UIStroke.Thickness = 2
+    UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+    -- Main Window
+    local MainFrame = Instance.new("Frame")
+    MainFrame.Name = "MainFrame"
+    MainFrame.Parent = ScreenGui
+    MainFrame.BackgroundColor3 = UIConfig.Background
+    MainFrame.BackgroundTransparency = UIConfig.Transparency
+    MainFrame.Position = UDim2.new(0.5, -325, 0.5, -225)
+    MainFrame.Size = UDim2.new(0, 650, 0, 450)
+    MainFrame.ClipsDescendants = true
+    MainFrame.Visible = false
+    
+    local MainCorner = Instance.new("UICorner")
+    MainCorner.CornerRadius = UDim.new(0, 10)
+    MainCorner.Parent = MainFrame
+
+    local MainStroke = Instance.new("UIStroke")
+    MainStroke.Parent = MainFrame
+    MainStroke.Color = UIConfig.MainColor
+    MainStroke.Thickness = 1
+    
+    -- Status Bar
+    local StatusBar = Instance.new("TextLabel")
+    StatusBar.Parent = MainFrame
+    StatusBar.BackgroundTransparency = 1
+    StatusBar.Position = UDim2.new(0, 170, 0, 10)
+    StatusBar.Size = UDim2.new(0, 400, 0, 30)
+    StatusBar.Font = UIConfig.Font
+    StatusBar.Text = "Status: Idle"
+    StatusBar.TextColor3 = Color3.fromRGB(100, 255, 100)
+    StatusBar.TextSize = 16
+    StatusBar.TextXAlignment = Enum.TextXAlignment.Left
+
+    -- Sidebar
+    local Sidebar = Instance.new("Frame")
+    Sidebar.Parent = MainFrame
+    Sidebar.BackgroundColor3 = UIConfig.Sidebar
+    Sidebar.Size = UDim2.new(0, 160, 1, 0)
+    
+    local SidebarCorner = Instance.new("UICorner")
+    SidebarCorner.CornerRadius = UDim.new(0, 10)
+    SidebarCorner.Parent = Sidebar
+    
+    local Title = Instance.new("TextLabel")
+    Title.Parent = Sidebar
+    Title.BackgroundTransparency = 1
+    Title.Position = UDim2.new(0, 0, 0, 20)
+    Title.Size = UDim2.new(1, 0, 0, 30)
+    Title.Font = UIConfig.Font
+    Title.Text = "VETA HUB"
+    Title.TextColor3 = UIConfig.MainColor
+    Title.TextSize = 24
+    
+    local TabContainer = Instance.new("ScrollingFrame")
+    TabContainer.Parent = Sidebar
+    TabContainer.BackgroundTransparency = 1
+    TabContainer.Position = UDim2.new(0, 10, 0, 80)
+    TabContainer.Size = UDim2.new(1, -20, 1, -90)
+    TabContainer.ScrollBarThickness = 0
+    
+    local UIList = Instance.new("UIListLayout")
+    UIList.Parent = TabContainer
+    UIList.Padding = UDim.new(0, 10)
+    
+    -- Content
+    local Content = Instance.new("Frame")
+    Content.Parent = MainFrame
+    Content.BackgroundTransparency = 1
+    Content.Position = UDim2.new(0, 170, 0, 50)
+    Content.Size = UDim2.new(1, -180, 1, -60)
+    
+    -- Dragging
+    local dragging, dragInput, dragStart, startPos
+    MainFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = MainFrame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    MainFrame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    -- Toggle UI
+    local toggled = false
+    OpenBtn.MouseButton1Click:Connect(function()
+        toggled = not toggled
+        MainFrame.Visible = toggled
+    end)
+
+    local Window = {}
+    local FirstTab = true
+
+    function Window:Tab(text)
+        local TabBtn = Instance.new("TextButton")
+        TabBtn.Parent = TabContainer
+        TabBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+        TabBtn.Size = UDim2.new(1, 0, 0, 40)
+        TabBtn.Font = UIConfig.Font
+        TabBtn.Text = text
+        TabBtn.TextColor3 = UIConfig.Text
+        TabBtn.TextSize = 14
+        
+        local TCorner = Instance.new("UICorner")
+        TCorner.CornerRadius = UDim.new(0, 6)
+        TCorner.Parent = TabBtn
+        
+        local TabPage = Instance.new("ScrollingFrame")
+        TabPage.Parent = Content
+        TabPage.Size = UDim2.new(1, 0, 1, 0)
+        TabPage.BackgroundTransparency = 1
+        TabPage.ScrollBarThickness = 2
+        TabPage.Visible = FirstTab
+        
+        local PList = Instance.new("UIListLayout")
+        PList.Parent = TabPage
+        PList.Padding = UDim.new(0, 8)
+        PList.SortOrder = Enum.SortOrder.LayoutOrder
+        
+        if FirstTab then
+            TabBtn.BackgroundColor3 = UIConfig.MainColor
+            FirstTab = false
+        end
+        
+        TabBtn.MouseButton1Click:Connect(function()
+            for _, v in pairs(Content:GetChildren()) do v.Visible = false end
+            TabPage.Visible = true
+            
+            for _, v in pairs(TabContainer:GetChildren()) do
+                if v:IsA("TextButton") then
+                    TweenService:Create(v, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(30, 30, 40)}):Play()
+                end
+            end
+            TweenService:Create(TabBtn, TweenInfo.new(0.2), {BackgroundColor3 = UIConfig.MainColor}):Play()
+        end)
+        
+        local Elements = {}
+        
+        function Elements:Toggle(text, default, callback)
+            local Frame = Instance.new("Frame")
+            Frame.Parent = TabPage
+            Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+            Frame.Size = UDim2.new(1, -5, 0, 45)
+            
+            local Corner = Instance.new("UICorner")
+            Corner.CornerRadius = UDim.new(0, 6)
+            Corner.Parent = Frame
+            
+            local Label = Instance.new("TextLabel")
+            Label.Parent = Frame
+            Label.BackgroundTransparency = 1
+            Label.Position = UDim2.new(0, 15, 0, 0)
+            Label.Size = UDim2.new(0.7, 0, 1, 0)
+            Label.Font = UIConfig.Font
+            Label.Text = text
+            Label.TextColor3 = UIConfig.Text
+            Label.TextXAlignment = Enum.TextXAlignment.Left
+            Label.TextSize = 14
+            
+            local Btn = Instance.new("TextButton")
+            Btn.Parent = Frame
+            Btn.BackgroundColor3 = default and UIConfig.MainColor or Color3.fromRGB(50, 50, 60)
+            Btn.Position = UDim2.new(1, -55, 0.5, -12)
+            Btn.Size = UDim2.new(0, 44, 0, 24)
+            Btn.Text = ""
+            
+            local BCorner = Instance.new("UICorner")
+            BCorner.CornerRadius = UDim.new(1, 0)
+            BCorner.Parent = Btn
+            
+            local Circle = Instance.new("Frame")
+            Circle.Parent = Btn
+            Circle.BackgroundColor3 = Color3.new(1,1,1)
+            Circle.Position = default and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+            Circle.Size = UDim2.new(0, 20, 0, 20)
+            
+            local CCorner = Instance.new("UICorner")
+            CCorner.CornerRadius = UDim.new(1, 0)
+            CCorner.Parent = Circle
+            
+            local active = default
+            Btn.MouseButton1Click:Connect(function()
+                active = not active
+                
+                local goalColor = active and UIConfig.MainColor or Color3.fromRGB(50, 50, 60)
+                local goalPos = active and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+                
+                TweenService:Create(Btn, TweenInfo.new(0.2), {BackgroundColor3 = goalColor}):Play()
+                TweenService:Create(Circle, TweenInfo.new(0.2), {Position = goalPos}):Play()
+                
+                callback(active)
+            end)
+        end
+        
+        function Elements:Button(text, callback)
+            local Btn = Instance.new("TextButton")
+            Btn.Parent = TabPage
+            Btn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+            Btn.Size = UDim2.new(1, -5, 0, 40)
+            Btn.Font = UIConfig.Font
+            Btn.Text = text
+            Btn.TextColor3 = UIConfig.Text
+            Btn.TextSize = 14
+            
+            local Corner = Instance.new("UICorner")
+            Corner.CornerRadius = UDim.new(0, 6)
+            Corner.Parent = Btn
+            
+            Btn.MouseButton1Click:Connect(function()
+                TweenService:Create(Btn, TweenInfo.new(0.1), {BackgroundColor3 = UIConfig.MainColor}):Play()
+                task.wait(0.1)
+                TweenService:Create(Btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(30, 30, 40)}):Play()
+                callback()
+            end)
+        end
+        
+        function Elements:Dropdown(text, options, callback)
+            local Frame = Instance.new("Frame")
+            Frame.Parent = TabPage
+            Frame.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+            Frame.Size = UDim2.new(1, -5, 0, 40)
+            Frame.ClipsDescendants = true
+            
+            local Corner = Instance.new("UICorner")
+            Corner.CornerRadius = UDim.new(0, 6)
+            Corner.Parent = Frame
+            
+            local Label = Instance.new("TextLabel")
+            Label.Parent = Frame
+            Label.BackgroundTransparency = 1
+            Label.Position = UDim2.new(0, 15, 0, 0)
+            Label.Size = UDim2.new(0.7, 0, 0, 40)
+            Label.Font = UIConfig.Font
+            Label.Text = text
+            Label.TextColor3 = UIConfig.Text
+            Label.TextXAlignment = Enum.TextXAlignment.Left
+            Label.TextSize = 14
+            
+            local ToggleBtn = Instance.new("TextButton")
+            ToggleBtn.Parent = Frame
+            ToggleBtn.BackgroundTransparency = 1
+            ToggleBtn.Size = UDim2.new(1, 0, 0, 40)
+            ToggleBtn.Text = ""
+            
+            local List = Instance.new("UIListLayout")
+            List.Parent = Frame
+            List.SortOrder = Enum.SortOrder.LayoutOrder
+            List.Padding = UDim.new(0, 5)
+            
+            -- Spacer
+            local Spacer = Instance.new("Frame")
+            Spacer.Parent = Frame
+            Spacer.BackgroundTransparency = 1
+            Spacer.Size = UDim2.new(1, 0, 0, 40)
+            Spacer.LayoutOrder = 0
+            
+            local open = false
+            
+            local function RefreshOptions()
+                -- Clear old
+                for _, v in pairs(Frame:GetChildren()) do
+                    if v:IsA("TextButton") and v ~= ToggleBtn then v:Destroy() end
+                end
+                
+                for i, opt in ipairs(options) do
+                    local OptBtn = Instance.new("TextButton")
+                    OptBtn.Parent = Frame
+                    OptBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+                    OptBtn.Size = UDim2.new(1, -20, 0, 30)
+                    OptBtn.Font = UIConfig.Font
+                    OptBtn.Text = opt
+                    OptBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+                    OptBtn.TextSize = 13
+                    OptBtn.LayoutOrder = i
+                    
+                    local OCorner = Instance.new("UICorner")
+                    OCorner.CornerRadius = UDim.new(0, 4)
+                    OCorner.Parent = OptBtn
+                    
+                    OptBtn.MouseButton1Click:Connect(function()
+                        Label.Text = text .. ": " .. opt
+                        callback(opt)
+                        open = false
+                        TweenService:Create(Frame, TweenInfo.new(0.3), {Size = UDim2.new(1, -5, 0, 40)}):Play()
+                    end)
+                end
+            end
+            
+            RefreshOptions()
+            
+            ToggleBtn.MouseButton1Click:Connect(function()
+                open = not open
+                if open then
+                    TweenService:Create(Frame, TweenInfo.new(0.3), {Size = UDim2.new(1, -5, 0, 40 + (#options * 35) + 10)}):Play()
+                else
+                    TweenService:Create(Frame, TweenInfo.new(0.3), {Size = UDim2.new(1, -5, 0, 40)}):Play()
+                end
+            end)
+            
+            return {
+                Refresh = function(newOptions)
+                    options = newOptions
+                    RefreshOptions()
+                end
+            }
+        end
+        
+        return Elements
+    end
+    
+    return Window, StatusBar
+end
+
+--// MAIN
+local Win, StatusBar = Library:CreateWindow("VETA HUB V6")
+
+local FarmTab = Win:Tab("Auto Farm")
+local WeaponDrop = FarmTab:Dropdown("Select Weapon", {"Melee", "Sword"}, function(v)
+    _G.Config.SelectedWeapon = v
+end)
+
+FarmTab:Button("Refresh Weapons (Click Me)", function()
+    local tools = GetWeaponList()
+    WeaponDrop.Refresh(tools)
+end)
 
 FarmTab:Toggle("Enable Auto Farm", false, function(v)
     _G.Config.AutoFarm = v
 end)
 
-FarmTab:Toggle("Fast Attack (Auto Click)", true, function(v)
+FarmTab:Toggle("Fast Attack", true, function(v)
     _G.Config.FastAttack = v
 end)
 
-FarmTab:Dropdown("Select Weapon", {"Melee", "Sword"}, function(v)
-    _G.Config.SelectedWeapon = v
-end)
-
-FarmTab:Toggle("Mob Aura (Infinite Range)", true, function(v)
-    _G.Config.MobAura = v
-end)
-
--- TAB 2: STATS
-local StatsTab = Win:Tab("rbxassetid://2", "Stats")
-
-StatsTab:Dropdown("Select Stat", {"Melee", "Defense", "Sword", "Gun", "Demon Fruit"}, function(v)
-    _G.Config.SelectedStat = v
-end)
-
-StatsTab:Toggle("Auto Upgrade Stats", false, function(v)
-    _G.Config.AutoStats = v
-end)
-
--- TAB 3: ESP
-local ESPTab = Win:Tab("rbxassetid://3", "Visuals")
-
-ESPTab:Toggle("Player ESP", false, function(v)
+local VisualsTab = Win:Tab("Visuals")
+VisualsTab:Toggle("Player/Mob ESP", false, function(v)
     _G.Config.ESP = v
 end)
-
-ESPTab:Toggle("Fruit ESP", false, function(v)
+VisualsTab:Toggle("Fruit ESP", false, function(v)
     _G.Config.FruitESP = v
 end)
 
-ESPTab:Toggle("Chest ESP", false, function(v)
-    _G.Config.ChestESP = v
+local StatsTab = Win:Tab("Stats")
+StatsTab:Dropdown("Select Stat", {"Melee", "Defense", "Sword", "Gun", "Demon Fruit"}, function(v)
+    _G.Config.SelectedStat = v
+end)
+StatsTab:Toggle("Auto Upgrade", false, function(v)
+    _G.Config.AutoStats = v
 end)
 
--- TAB 4: MISC
-local MiscTab = Win:Tab("rbxassetid://4", "Misc")
-
-MiscTab:Button("Rejoin Server", function()
-    game:GetService("TeleportService"):Teleport(game.PlaceId, Player)
-end)
-
-MiscTab:Button("Redeem All Codes", function()
-    local Codes = {
-        "AXIORE", "BIGNEWS", "BLUXXY", "CHANDLER", "ENNY_IS_PRO_IN_MINT", "FUDD10", "FUDD10_V2", "JCWK", "KITTGAMING",
-        "MAGICBUS", "STARCODEHEO", "SUB2CAPTAINMAUI", "SUB2DAIGROCK", "SUB2FER999", "SUB2GAMERROBOT_EXP1", "SUB2GAMERROBOT_RESET1",
-        "SUB2NOOBMASTER123", "SUB2OFFICIALNOOBIE", "SUB2UNCLEKIZARU", "TANTAI", "THEGREATACE", "STRAWHATMAINE"
-    }
-    for _, code in ipairs(Codes) do
-        ReplicatedStorage.Remotes.CommF_:InvokeServer("RedeemCode", code)
-        task.wait(0.5)
-    end
-end)
-
---// LOGIC LOOPS
-
--- 1. Auto Farm Loop
+--// LOGIC
 task.spawn(function()
     while true do
         task.wait()
+        if StatusBar then StatusBar.Text = "Status: " .. CurrentStatus end
+        
         if _G.Config.AutoFarm then
-            pcall(function()
-                local CurrentQuest = CheckQuest()
-                if not CurrentQuest then return end
+            local Quest = CheckQuest()
+            if Quest then
+                UpdateStatus("Quest: " .. Quest.Quest)
                 
-                -- Check if we have the quest active
-                local PlayerQuest = Player.PlayerGui.Main.Quest
-                if not PlayerQuest.Visible then
-                    -- Get Quest
-                    local NPC = workspace.NPCs:FindFirstChild(CurrentQuest.NPC)
+                local MyQuest = Player.PlayerGui.Main.Quest
+                if not MyQuest.Visible then
+                    -- Take Quest
+                    local NPC = workspace.NPCs:FindFirstChild(Quest.NPC)
                     if NPC then
-                        if (Player.Character.HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude > 5000 then
-                            -- Instant TP if too far (Island to Island)
-                             Player.Character.HumanoidRootPart.CFrame = NPC.HumanoidRootPart.CFrame
+                        local dist = (Player.Character.HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude
+                        if dist > 3000 then
+                            -- Teleport Bypass
+                            UpdateStatus("Teleporting to Island...")
+                            Tween(NPC.HumanoidRootPart.CFrame)
                         else
-                            Tween(NPC.HumanoidRootPart.CFrame * CFrame.new(0, 0, 5))
-                        end
-                        
-                        if (Player.Character.HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude <= 10 then
-                            ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", CurrentQuest.Quest, 1)
+                            Tween(NPC.HumanoidRootPart.CFrame * CFrame.new(0,0,3))
+                            if dist < 5 then
+                                ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", Quest.Quest, 1)
+                            end
                         end
                     end
                 else
-                    -- Quest Active -> Kill Mobs
-                    local TargetName = CurrentQuest.Mob
-                    local Target = nil
+                    -- Kill
+                    local TargetName = Quest.Mob
+                    UpdateStatus("Hunting: " .. TargetName)
                     
-                    -- Find closest living mob (Infinite Range Logic)
+                    local Target = nil
                     for _, v in pairs(workspace.Enemies:GetChildren()) do
                         if v.Name == TargetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                             Target = v
-                            break -- Just take the first one found, effectively infinite range selection
+                            break
                         end
                     end
                     
                     if Target then
-                        -- Farm Position (Above Head)
-                        local FarmPos = Target.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-                        Tween(FarmPos)
+                        local TargetCF = Target.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+                        Tween(TargetCF)
                         
-                        -- Equip Weapon
+                        -- Equip
                         EquipWeapon(_G.Config.SelectedWeapon)
                         
-                        -- Enable Haki
-                        if not Player.Character:FindFirstChild("HasBuso") then
-                            ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
+                        -- Aura/Magnet
+                        for _, mob in pairs(workspace.Enemies:GetChildren()) do
+                            if mob.Name == TargetName and (mob.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 300 then
+                                mob.HumanoidRootPart.CFrame = Target.HumanoidRootPart.CFrame
+                                mob.HumanoidRootPart.CanCollide = false
+                                mob.Humanoid.WalkSpeed = 0
+                            end
                         end
                         
                         -- Attack
-                        if (Player.Character.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 20 then -- Increased Attack Range slightly
-                            -- Fast Attack
-                            if _G.Config.FastAttack then
-                                VirtualUser:CaptureController()
-                                VirtualUser:ClickButton1(Vector2.new(851, 158), workspace.Camera.CFrame)
-                            end
-                            
-                            -- Mob Aura (Infinite Range)
-                            if _G.Config.MobAura then
-                                for _, other in pairs(workspace.Enemies:GetChildren()) do
-                                    -- Check if it's the same mob type, not the current target, exists, and is within 5000 studs (Infinite-ish)
-                                    if other.Name == TargetName and other ~= Target and other:FindFirstChild("HumanoidRootPart") and (other.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 5000 then
-                                        other.HumanoidRootPart.CFrame = Target.HumanoidRootPart.CFrame
-                                        other.HumanoidRootPart.CanCollide = false
-                                        other.Humanoid.WalkSpeed = 0
-                                    end
-                                end
-                            end
+                        if (Player.Character.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 25 then
+                             VirtualUser:CaptureController()
+                             VirtualUser:ClickButton1(Vector2.new(851, 158), workspace.Camera.CFrame)
+                             ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
                         end
                     else
-                        -- Wait for spawn / find spawn point
+                        UpdateStatus("Waiting for Mobs...")
                     end
                 end
-            end)
+            end
+        else
+            UpdateStatus("Idle")
+        end
+    end
+end)
+
+--// ESP LOOP
+task.spawn(function()
+    while true do
+        task.wait(0.1)
+        if _G.Config.ESP then
+            for _, v in pairs(workspace.Enemies:GetChildren()) do
+                if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+                    if not v:FindFirstChild("VetaESP") then
+                        -- Billboard
+                        local bg = Instance.new("BillboardGui")
+                        bg.Name = "VetaESP"
+                        bg.Adornee = v.Head
+                        bg.Size = UDim2.new(0, 100, 0, 50)
+                        bg.StudsOffset = Vector3.new(0, 2, 0)
+                        bg.AlwaysOnTop = true
+                        bg.Parent = v
+                        
+                        local text = Instance.new("TextLabel")
+                        text.Parent = bg
+                        text.BackgroundTransparency = 1
+                        text.Size = UDim2.new(1, 0, 1, 0)
+                        text.TextColor3 = Color3.new(1, 0, 0)
+                        text.TextStrokeTransparency = 0
+                        text.TextSize = 12
+                        text.Name = "Label"
+                    else
+                        local dist = math.floor((Player.Character.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude)
+                        v.VetaESP.Label.Text = v.Name .. " [" .. dist .. "m]\nHP: " .. math.floor(v.Humanoid.Health)
+                    end
+                end
+            end
         else
             -- Cleanup
-            if Player.Character and Player.Character:FindFirstChild("HumanoidRootPart") and Player.Character.HumanoidRootPart:FindFirstChild("VetaFly") then
-                Player.Character.HumanoidRootPart.VetaFly:Destroy()
-            end
-        end
-    end
-end)
-
--- 2. Auto Stats Loop
-task.spawn(function()
-    while true do
-        task.wait(0.5)
-        if _G.Config.AutoStats then
-            ReplicatedStorage.Remotes.CommF_:InvokeServer("AddPoint", _G.Config.SelectedStat, 1)
-        end
-    end
-end)
-
--- 3. ESP Loop
-task.spawn(function()
-    while true do
-        task.wait(1)
-        -- Clear old ESP handled by Highlights automatically if parent destroyed? 
-        -- Actually safer to re-apply
-        
-        if _G.Config.ESP then
-            for _, p in pairs(Players:GetPlayers()) do
-                if p ~= Player and p.Character then
-                    if not p.Character:FindFirstChild("VetaESP") then
-                        local h = Instance.new("Highlight", p.Character)
-                        h.Name = "VetaESP"
-                        h.FillColor = Color3.fromRGB(0, 255, 0)
-                        h.OutlineColor = Color3.fromRGB(255, 255, 255)
-                    end
-                end
-            end
-        else
-            for _, p in pairs(Players:GetPlayers()) do
-                if p.Character and p.Character:FindFirstChild("VetaESP") then
-                    p.Character.VetaESP:Destroy()
-                end
-            end
-        end
-        
-        if _G.Config.FruitESP then
-             for _, v in pairs(workspace:GetChildren()) do
-                if v.Name:find("Fruit") and v:IsA("Tool") then
-                     if not v:FindFirstChild("VetaESP") then
-                        local h = Instance.new("Highlight", v)
-                        h.Name = "VetaESP"
-                        h.FillColor = Color3.fromRGB(255, 0, 0)
-                    end
-                end
+             for _, v in pairs(workspace.Enemies:GetChildren()) do
+                if v:FindFirstChild("VetaESP") then v.VetaESP:Destroy() end
              end
         end
     end
