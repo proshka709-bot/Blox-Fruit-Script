@@ -26,7 +26,6 @@ _G.SelectStat = "Melee"
 -- Data Tables
 local QuestList = {
     -- Format: {LevelReq, QuestName, QuestGiverName, MobName, MobLevel}
-    -- Add more quests here by checking wiki or tools
     {0, "BanditQuest1", "Bandit Quest Giver", "Bandit", 5},
     {10, "JungleQuest", "Monkey Quest Giver", "Monkey", 14},
     {15, "JungleQuest", "Monkey Quest Giver", "Gorilla", 20},
@@ -34,7 +33,13 @@ local QuestList = {
     {40, "BuggyQuest1", "Pirate Adventurer", "Brute", 45},
     {60, "DesertQuest", "Desert Adventurer", "Desert Bandit", 60},
     {75, "DesertQuest", "Desert Adventurer", "Desert Officer", 70},
-    -- ... User can extend this list
+    {90, "SnowQuest", "Snow Quest Giver", "Snow Bandit", 90},
+    {105, "SnowQuest", "Snow Quest Giver", "Snowman", 100},
+    {120, "MarineQuest2", "Marine Quest Giver", "Chief Petty Officer", 120},
+    {130, "SkyExp1Quest", "Sky Quest Giver", "Sky Bandit", 150},
+    {150, "SkyExp1Quest", "Sky Quest Giver", "Dark Master", 175},
+    {175, "ColosseumQuest", "Quest Giver", "Toga Warrior", 180},
+    {190, "ColosseumQuest", "Quest Giver", "Gladiator", 200},
 }
 
 -- Services
@@ -140,9 +145,12 @@ spawn(function()
                     if Target then
                         -- Teleport/Tween to Mob
                         local AttackPos = Target.HumanoidRootPart.CFrame * CFrame.new(0, 5, 0)
-                        if (Character.HumanoidRootPart.Position - AttackPos.Position).Magnitude > 250 then
+                        local Distance = (Character.HumanoidRootPart.Position - AttackPos.Position).Magnitude
+                        
+                        if Distance > 250 then
                              TweenTo(AttackPos)
-                        else
+                        elseif Distance > 10 then
+                             -- Fast movement for short distance
                              Character.HumanoidRootPart.CFrame = AttackPos
                         end
                         
@@ -151,12 +159,13 @@ spawn(function()
                         VirtualUser:Button1Down(Vector2.new(1280, 672))
                         
                         -- Equip Weapon (First Tool)
-                        local Tool = LocalPlayer.Backpack:FindFirstChildOfClass("Tool") or Character:FindFirstChildOfClass("Tool")
-                        if LocalPlayer.Backpack:FindFirstChildOfClass("Tool") then
-                            LocalPlayer.Character.Humanoid:EquipTool(LocalPlayer.Backpack:FindFirstChildOfClass("Tool"))
+                        local Tool = LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
+                        if Tool then
+                            LocalPlayer.Character.Humanoid:EquipTool(Tool)
                         end
                     else
-                        -- Wait for spawn / Mob Aura check
+                        -- Mob not found, wait for spawn
+                        -- Optional: Teleport to spawn location if known
                     end
                 end
             end)
@@ -169,17 +178,16 @@ spawn(function()
     while task.wait(0.5) do
         if _G.AutoStats then
             pcall(function()
-                -- Fix: Ensure correct arguments for AddPoint
-                -- Stats mapping: Melee, Defense, Sword, Gun, Blox Fruit
-                local StatMap = {
-                    ["Melee"] = "Melee",
-                    ["Defense"] = "Defense",
-                    ["Sword"] = "Sword",
-                    ["Gun"] = "Gun",
-                    ["Demon Fruit"] = "Demon Fruit" 
-                }
-                
-                CommF:InvokeServer("AddPoint", StatMap[_G.SelectStat], 1)
+                if LocalPlayer.Data.Points.Value > 0 then
+                    local StatMap = {
+                        ["Melee"] = "Melee",
+                        ["Defense"] = "Defense",
+                        ["Sword"] = "Sword",
+                        ["Gun"] = "Gun",
+                        ["Demon Fruit"] = "Demon Fruit" 
+                    }
+                    CommF:InvokeServer("AddPoint", StatMap[_G.SelectStat], 1)
+                end
             end)
         end
     end
