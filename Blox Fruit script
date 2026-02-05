@@ -24,6 +24,8 @@ local ShopTab = Window:CreateTab("Shop", 4483362458)
 local ESPTab = Window:CreateTab("ESP", 4483362458)
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 
+local StatusLabel = MainTab:CreateLabel("Status: Idle")
+
 -- Variables
 _G.AutoFarm = false
 _G.AutoQuest = true -- Default to true if AutoFarm is on
@@ -90,6 +92,10 @@ local LocalPlayer = Players.LocalPlayer
 local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 
 -- Helper Functions
+local function UpdateStatus(text)
+    StatusLabel:Set("Status: " .. text)
+end
+
 local function GetCurrentQuestData()
     local myLevel = LocalPlayer.Data.Level.Value
     local bestQuest = nil
@@ -108,6 +114,25 @@ local function CheckActiveQuest()
         return PlayerGui.Main.Quest.Visible
     end
     return false
+end
+
+local function GetActiveQuestTarget()
+    -- Attempt to read Quest Title from GUI
+    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if PlayerGui and PlayerGui:FindFirstChild("Main") and PlayerGui.Main:FindFirstChild("Quest") and PlayerGui.Main.Quest.Visible then
+        local Container = PlayerGui.Main.Quest:FindFirstChild("Container")
+        if Container and Container:FindFirstChild("QuestTitle") and Container.QuestTitle:FindFirstChild("Title") then
+            local text = Container.QuestTitle.Title.Text
+            -- Format is usually "Defeat [Amount] [MobName]" or just "[MobName]"
+            -- Simple parse: try to match known mobs from QuestList
+            for _, q in ipairs(QuestList) do
+                 if text:find(q[4]) then
+                     return q[4]
+                 end
+            end
+        end
+    end
+    return nil
 end
 
 local function TweenTo(targetCFrame)
@@ -218,32 +243,69 @@ spawn(function()
                 if not HumanoidRootPart then return end
                 
                 local QuestData = GetCurrentQuestData()
-                if not QuestData then return end -- No quest found for this level
+                local TargetMobName = nil
                 
-                -- 1. Quest Handling
-                if _G.AutoQuest and not CheckActiveQuest() then
-                    local NPC = FindNPC(QuestData[3])
-                    if NPC and NPC:FindFirstChild("HumanoidRootPart") then
-                        local dist = (HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude
-                        if dist > 8 then
-                            TweenTo(NPC.HumanoidRootPart.CFrame)
+                -- 1. Check Active Quest
+                if CheckActiveQuest() then
+                    TargetMobName = GetActiveQuestTarget()
+                    if not TargetMobName and QuestData then
+                         -- Fallback: Use level-based quest mob if parsing fails
+                         TargetMobName = QuestData[4] 
+                    end
+                else
+                    -- No Quest Active
+                    if _G.AutoQuest then
+                        if not QuestData then 
+                            UpdateStatus("Level Too Low / No Quest Found")
+                            return 
+                        end
+                        
+                        UpdateStatus("Getting Quest: " .. QuestData[2])
+                        local NPC = FindNPC(QuestData[3])
+                        
+                        if NPC and NPC:FindFirstChild("HumanoidRootPart") then
+                            local dist = (HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude
+                            if dist > 8 then
+                                TweenTo(NPC.HumanoidRootPart.CFrame)
+                            else
+                                -- Spam Request when close
+                                CommF:InvokeServer("StartQuest", QuestData[2], 1)
+                                CommF:InvokeServer("SetSpawnPoint")
+                                task.wait(0.5)
+                            end
                         else
-                            -- Spam Request when close
-                            CommF:InvokeServer("StartQuest", QuestData[2], 1)
-                            CommF:InvokeServer("SetSpawnPoint")
-                            task.wait(0.5)
-                            if CheckActiveQuest() then return end
+                             UpdateStatus("NPC Not Found: " .. QuestData[3])
+                             -- Try searching by partial name in Workspace
+                             local found = false
+                             for _, v in pairs(Workspace:GetChildren()) do
+                                 if v.Name:find(QuestData[3]) and v:FindFirstChild("HumanoidRootPart") then
+                                      TweenTo(v.HumanoidRootPart.CFrame)
+                                      found = true
+                                      break
+                                 end
+                             end
+                             if not found then
+                                 -- Desperate measure: Try StartQuest anyway (sometimes works if cached)
+                                 CommF:InvokeServer("StartQuest", QuestData[2], 1)
+                             end
                         end
                         return -- Stop loop to focus on getting quest
                     else
-                         -- NPC not found? Maybe Teleport to a default spot or warn
+                         UpdateStatus("Auto Quest Disabled")
                     end
                 end
+
+                if not TargetMobName then
+                     UpdateStatus("Waiting for Quest...")
+                     return 
+                end
+
+                UpdateStatus("Farming: " .. TargetMobName)
 
                 -- 2. Mob Farming
                 -- Bring Mobs (Safe Mode - Reduced Range)
                 for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
-                    if enemy.Name == QuestData[4] and enemy:FindFirstChild("HumanoidRootPart") and (enemy.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude < 150 then
+                    if enemy.Name:find(TargetMobName) and enemy:FindFirstChild("HumanoidRootPart") and (enemy.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude < 150 then
                         enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0,0,-5)
                         enemy.HumanoidRootPart.CanCollide = false
                         if enemy:FindFirstChild("Humanoid") then
@@ -261,7 +323,7 @@ spawn(function()
                 local Target = nil
                 local MinDist = math.huge
                 for _, v in pairs(Workspace.Enemies:GetChildren()) do
-                    if v.Name == QuestData[4] and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
+                    if v.Name:find(TargetMobName) and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
                         local dist = (HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude
                         if dist < MinDist then
                             MinDist = dist
@@ -316,6 +378,9 @@ spawn(function()
                             end
                          end
                     end
+                else
+                     UpdateStatus("Mob Not Found: " .. TargetMobName)
+                     -- Maybe teleport to spawn location of mob?
                 end
             end)
         end
