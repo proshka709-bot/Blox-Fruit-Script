@@ -17,6 +17,9 @@ local HttpService = game:GetService("HttpService")
 local Player = Players.LocalPlayer
 local Mouse = Player:GetMouse()
 
+-- Validation
+if not Player then error("Failed to get LocalPlayer") end
+
 --// UI CONFIGURATION
 local UIConfig = {
     MainColor = Color3.fromRGB(0, 120, 255), -- Bright Blue
@@ -110,21 +113,32 @@ local function EquipWeapon(name)
 end
 
 local function CheckQuest()
+    if not Player:FindFirstChild("Data") or not Player.Data:FindFirstChild("Level") then return nil end
     local MyLvl = Player.Data.Level.Value
-    local BestQuest = QuestData[1]
+    local BestQuest = nil
     
-    for _, v in pairs(QuestData) do
-        if MyLvl >= v.Lvl then
-            BestQuest = v
+    for i = 1, #QuestData do
+        if MyLvl >= QuestData[i].Lvl then
+            BestQuest = QuestData[i]
+        else
+            break
         end
     end
     return BestQuest
 end
 
+local ActiveTween = nil
+
 local function Tween(TargetCF)
-    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return end
+    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return nil end
     
     local HRP = Player.Character.HumanoidRootPart
+    
+    -- Cancel previous tween
+    if ActiveTween then
+        pcall(function() ActiveTween:Cancel() end)
+        ActiveTween = nil
+    end
     
     -- Anti-Fall
     if not HRP:FindFirstChild("VetaFly") then
@@ -139,16 +153,20 @@ local function Tween(TargetCF)
     local Speed = 350
     local Time = Distance / Speed
     
-    local TInfo = TweenInfo.new(Time, Enum.EasingStyle.Linear)
-    local Tween = TweenService:Create(HRP, TInfo, {CFrame = TargetCF})
-    Tween:Play()
+    if Time < 0.1 then Time = 0.1 end
     
     -- Noclip
     for _, v in pairs(Player.Character:GetChildren()) do
         if v:IsA("BasePart") then v.CanCollide = false end
     end
     
-    return Tween, Time
+    local TInfo = TweenInfo.new(Time, Enum.EasingStyle.Linear)
+    local NewTween = TweenService:Create(HRP, TInfo, {CFrame = TargetCF})
+    NewTween:Play()
+    
+    ActiveTween = NewTween
+    
+    return NewTween, Time
 end
 
 --// VETA UI LIBRARY (REMASTERED)
@@ -544,69 +562,90 @@ end)
 --// LOGIC
 task.spawn(function()
     while true do
-        task.wait()
+        task.wait(0.5)  -- Более эффективный интервал
         if StatusBar then StatusBar.Text = "Status: " .. CurrentStatus end
         
-        if _G.Config.AutoFarm then
+        if _G.Config.AutoFarm and Player and Player.Character then
             local Quest = CheckQuest()
-            if Quest then
-                UpdateStatus("Quest: " .. Quest.Quest)
-                
-                local MyQuest = Player.PlayerGui.Main.Quest
-                if not MyQuest.Visible then
-                    -- Take Quest
-                    local NPC = workspace.NPCs:FindFirstChild(Quest.NPC)
-                    if NPC then
-                        local dist = (Player.Character.HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude
-                        if dist > 3000 then
-                            -- Teleport Bypass
-                            UpdateStatus("Teleporting to Island...")
-                            Tween(NPC.HumanoidRootPart.CFrame)
-                        else
-                            Tween(NPC.HumanoidRootPart.CFrame * CFrame.new(0,0,3))
-                            if dist < 5 then
+            if not Quest then
+                UpdateStatus("No quest available")
+                continue
+            end
+            
+            UpdateStatus("Quest: " .. Quest.Quest)
+            
+            local success, MyQuest = pcall(function()
+                return Player.PlayerGui.Main.Quest
+            end)
+            
+            if not success or not MyQuest or not MyQuest.Visible then
+                -- Take Quest
+                local NPC = workspace:FindFirstChild("NPCs") and workspace.NPCs:FindFirstChild(Quest.NPC)
+                if NPC and NPC:FindFirstChild("HumanoidRootPart") then
+                    local dist = (Player.Character.HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude
+                    if dist > 3000 then
+                        UpdateStatus("Teleporting to Island...")
+                        Tween(NPC.HumanoidRootPart.CFrame)
+                    else
+                        Tween(NPC.HumanoidRootPart.CFrame * CFrame.new(0,0,3))
+                        if dist < 5 then
+                            pcall(function()
                                 ReplicatedStorage.Remotes.CommF_:InvokeServer("StartQuest", Quest.Quest, 1)
-                            end
+                            end)
                         end
                     end
-                else
-                    -- Kill
-                    local TargetName = Quest.Mob
-                    UpdateStatus("Hunting: " .. TargetName)
-                    
-                    local Target = nil
-                    for _, v in pairs(workspace.Enemies:GetChildren()) do
+                end
+            else
+                -- Kill
+                local TargetName = Quest.Mob
+                UpdateStatus("Hunting: " .. TargetName)
+                
+                local Target = nil
+                local enemies = workspace:FindFirstChild("Enemies")
+                if enemies then
+                    for _, v in pairs(enemies:GetChildren()) do
                         if v.Name == TargetName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
                             Target = v
                             break
                         end
                     end
+                end
+                
+                if Target and Target:FindFirstChild("HumanoidRootPart") then
+                    local TargetCF = Target.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+                    Tween(TargetCF)
                     
-                    if Target then
-                        local TargetCF = Target.HumanoidRootPart.CFrame * CFrame.new(0, 20, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-                        Tween(TargetCF)
-                        
-                        -- Equip
-                        EquipWeapon(_G.Config.SelectedWeapon)
-                        
-                        -- Aura/Magnet
-                        for _, mob in pairs(workspace.Enemies:GetChildren()) do
-                            if mob.Name == TargetName and (mob.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 300 then
+                    -- Equip
+                    EquipWeapon(_G.Config.SelectedWeapon)
+                    
+                    -- Aura/Magnet
+                    if enemies then
+                        for _, mob in pairs(enemies:GetChildren()) do
+                            if mob.Name == TargetName and mob:FindFirstChild("HumanoidRootPart") and 
+                               (mob.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 300 then
                                 mob.HumanoidRootPart.CFrame = Target.HumanoidRootPart.CFrame
                                 mob.HumanoidRootPart.CanCollide = false
-                                mob.Humanoid.WalkSpeed = 0
+                                if mob:FindFirstChild("Humanoid") then
+                                    mob.Humanoid.WalkSpeed = 0
+                                end
                             end
                         end
-                        
-                        -- Attack
-                        if (Player.Character.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 25 then
-                             VirtualUser:CaptureController()
-                             VirtualUser:ClickButton1(Vector2.new(851, 158), workspace.Camera.CFrame)
-                             ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
-                        end
-                    else
-                        UpdateStatus("Waiting for Mobs...")
                     end
+                    
+                    -- Attack
+                    if (Player.Character.HumanoidRootPart.Position - Target.HumanoidRootPart.Position).Magnitude < 25 then
+                        VirtualUser:CaptureController()
+                        local camera = workspace.Camera
+                        local screenSize = camera.ViewportSize
+                        local clickPos = Vector2.new(screenSize.X / 2, screenSize.Y / 2)
+                        VirtualUser:ClickButton1(clickPos, camera.CFrame)
+                        
+                        pcall(function()
+                            ReplicatedStorage.Remotes.CommF_:InvokeServer("Buso")
+                        end)
+                    end
+                else
+                    UpdateStatus("Waiting for Mobs...")
                 end
             end
         else
@@ -619,38 +658,46 @@ end)
 task.spawn(function()
     while true do
         task.wait(0.1)
-        if _G.Config.ESP then
-            for _, v in pairs(workspace.Enemies:GetChildren()) do
-                if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                    if not v:FindFirstChild("VetaESP") then
-                        -- Billboard
-                        local bg = Instance.new("BillboardGui")
-                        bg.Name = "VetaESP"
-                        bg.Adornee = v.Head
-                        bg.Size = UDim2.new(0, 100, 0, 50)
-                        bg.StudsOffset = Vector3.new(0, 2, 0)
-                        bg.AlwaysOnTop = true
-                        bg.Parent = v
-                        
-                        local text = Instance.new("TextLabel")
-                        text.Parent = bg
-                        text.BackgroundTransparency = 1
-                        text.Size = UDim2.new(1, 0, 1, 0)
-                        text.TextColor3 = Color3.new(1, 0, 0)
-                        text.TextStrokeTransparency = 0
-                        text.TextSize = 12
-                        text.Name = "Label"
-                    else
-                        local dist = math.floor((Player.Character.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude)
-                        v.VetaESP.Label.Text = v.Name .. " [" .. dist .. "m]\nHP: " .. math.floor(v.Humanoid.Health)
+        if _G.Config.ESP and Player and Player.Character then
+            local enemies = workspace:FindFirstChild("Enemies")
+            if enemies then
+                for _, v in pairs(enemies:GetChildren()) do
+                    if v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("Head") then
+                        if not v:FindFirstChild("VetaESP") then
+                            -- Billboard
+                            local bg = Instance.new("BillboardGui")
+                            bg.Name = "VetaESP"
+                            bg.Adornee = v.Head
+                            bg.Size = UDim2.new(0, 100, 0, 50)
+                            bg.StudsOffset = Vector3.new(0, 2, 0)
+                            bg.AlwaysOnTop = true
+                            bg.Parent = v
+                            
+                            local text = Instance.new("TextLabel")
+                            text.Parent = bg
+                            text.BackgroundTransparency = 1
+                            text.Size = UDim2.new(1, 0, 1, 0)
+                            text.TextColor3 = Color3.new(1, 0, 0)
+                            text.TextStrokeTransparency = 0
+                            text.TextSize = 12
+                            text.Name = "Label"
+                        else
+                            local dist = math.floor((Player.Character.HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude)
+                            v.VetaESP.Label.Text = v.Name .. " [" .. dist .. "m]\nHP: " .. math.floor(v.Humanoid.Health)
+                        end
                     end
                 end
             end
         else
             -- Cleanup
-             for _, v in pairs(workspace.Enemies:GetChildren()) do
-                if v:FindFirstChild("VetaESP") then v.VetaESP:Destroy() end
-             end
+            local enemies = workspace:FindFirstChild("Enemies")
+            if enemies then
+                for _, v in pairs(enemies:GetChildren()) do
+                    if v:FindFirstChild("VetaESP") then 
+                        pcall(function() v.VetaESP:Destroy() end)
+                    end
+                end
+            end
         end
     end
 end)
