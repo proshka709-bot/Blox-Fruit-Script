@@ -1,9 +1,9 @@
--- [[ LARB SYSTEM v7.1.0 | CHANGELOG v15 ]]
--- Mode: Code (ESP & Misc Update)
--- Added: ESP Distance Display (Real-time meters)
--- Added: Infinite Jump (Misc Tab)
--- Added: Fullbright (Misc Tab)
--- Optimized: ESP Performance (Table-based updates)
+-- [[ LARB SYSTEM v7.1.0 | CHANGELOG v16 ]]
+-- Mode: Code (Combat Overhaul)
+-- Added: Strict Weapon Selection (Prevents spamming all items)
+-- Added: Magnet "Black Hole" (Pulls all mobs to one spot)
+-- Added: Hitbox Expander (Allows hitting mobs from afar with any weapon)
+-- Improved: Safe Hover (Player stays 20 studs above danger)
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -331,40 +331,76 @@ task.spawn(function()
                 end
                     
                 if Target then
-                    -- 1. Position Player (Stable Hover)
-                    -- Position 7 studs above the enemy to avoid getting stuck, look down at enemy
+                    -- 1. Equip Weapon (Strict Selection)
+                    local function EquipSelected()
+                         local Character = LocalPlayer.Character
+                         if not Character then return end
+                         local Humanoid = Character:FindFirstChild("Humanoid")
+                         if not Humanoid then return end
+                         
+                         -- Check currently equipped
+                         local Current = Character:FindFirstChildOfClass("Tool")
+                         local WantedType = _G.SelectWeapon -- "Melee", "Sword", "Demon Fruit"
+                         
+                         if Current then
+                             if (WantedType == "Demon Fruit" and Current.ToolTip == "Blox Fruit") or
+                                (WantedType == "Sword" and Current.ToolTip == "Sword") or
+                                (WantedType == "Melee" and Current.ToolTip == "Melee") then
+                                 return -- Correct weapon equipped
+                             end
+                             Humanoid:UnequipTools() -- Unequip wrong weapon
+                         end
+                         
+                         -- Find and Equip from Backpack
+                         for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
+                             if tool:IsA("Tool") then
+                                 if (WantedType == "Demon Fruit" and tool.ToolTip == "Blox Fruit") or
+                                    (WantedType == "Sword" and tool.ToolTip == "Sword") or
+                                    (WantedType == "Melee" and tool.ToolTip == "Melee") then
+                                     Humanoid:EquipTool(tool)
+                                     return
+                                 end
+                             end
+                         end
+                    end
+                    EquipSelected()
+
+                    -- 2. Position Player (Safe Hover)
                     local TargetPos = Target.HumanoidRootPart.Position
-                    local AttackPos = CFrame.new(TargetPos + Vector3.new(0, 10, 0), TargetPos) -- Higher hover to stay safe
+                    -- Hover 20 studs above (Safe range)
+                    local AttackPos = CFrame.new(TargetPos + Vector3.new(0, 20, 0), TargetPos) 
                     local Distance = (HumanoidRootPart.Position - AttackPos.Position).Magnitude
                     
                     if Distance > 250 then
                          TweenTo(AttackPos)
                     else
-                         -- Stable Lock: Set CFrame directly without tweening for instant response
                          HumanoidRootPart.CFrame = AttackPos
-                         HumanoidRootPart.Velocity = Vector3.new(0,0,0) -- Stop physics drift
+                         HumanoidRootPart.Velocity = Vector3.new(0,0,0)
                          if Character:FindFirstChild("Humanoid") then
-                             Character.Humanoid.PlatformStand = true -- Prevent falling animation
+                             Character.Humanoid.PlatformStand = true
                          end
                     end
                     
-                    -- 2. Bring Mobs (DISABLED to prevent "Flying away" issues)
-                    -- User requested to fight at spawn. 
-                    -- Only bring mobs if they are VERY close to prevent drifting
+                    -- 3. Bring Mobs (Magnet + Reach)
+                    -- Pulls all matching mobs to a single spot in front of player
                     for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
                         if enemy.Name:find(TargetMobName) and enemy:FindFirstChild("HumanoidRootPart") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
-                            local eDist = (enemy.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude
-                            if eDist < 10 then -- Only bring if practically touching
-                                enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0, -4, -2) 
-                                enemy.HumanoidRootPart.CanCollide = false
-                                enemy.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
-                                enemy.Humanoid.WalkSpeed = 0
-                                enemy.Humanoid.JumpPower = 0
+                            -- Bring Logic
+                            enemy.HumanoidRootPart.CanCollide = false
+                            enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0, -10, 0) -- Bring BELOW player (since we hover 20 studs up)
+                            enemy.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+                            enemy.Humanoid.WalkSpeed = 0
+                            enemy.Humanoid.JumpPower = 0
+                            
+                            -- Hitbox Expander (Reach) - Allows hitting from "afar"
+                            if enemy.HumanoidRootPart.Size.Y < 50 then
+                                enemy.HumanoidRootPart.Size = Vector3.new(50, 50, 50)
+                                enemy.HumanoidRootPart.Transparency = 0.5
                             end
                         end
                     end
                     
-                    -- 3. Auto Attack (Ensure Hits)
+                    -- 4. Auto Attack
                     game:GetService("VirtualUser"):CaptureController()
                     game:GetService("VirtualUser"):ClickButton1(Vector2.new(0, 0))
                     
@@ -377,39 +413,6 @@ task.spawn(function()
                                 game:GetService("VirtualInputManager"):SendKeyEvent(false, key, false, game)
                             end
                         end)
-                    end
-
-                    -- Equip Weapon (Priority: Selected Weapon)
-                    local Equipped = false
-                    local TargetTool = nil
-                    
-                    for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
-                        if tool:IsA("Tool") then
-                            if _G.SelectWeapon == "Demon Fruit" and tool.ToolTip == "Blox Fruit" then
-                                TargetTool = tool
-                                break
-                            elseif _G.SelectWeapon == "Sword" and tool.ToolTip == "Sword" then
-                                TargetTool = tool
-                                break
-                            elseif _G.SelectWeapon == "Melee" and tool.ToolTip == "Melee" then
-                                TargetTool = tool
-                                break
-                            end
-                        end
-                    end
-                    
-                    if TargetTool then
-                        LocalPlayer.Character.Humanoid:EquipTool(TargetTool)
-                        Equipped = true
-                    end
-                    
-                    if not Equipped then -- Fallback to any weapon if specific not found
-                         for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
-                            if tool:IsA("Tool") and (tool.ToolTip == "Melee" or tool.ToolTip == "Sword" or tool.ToolTip == "Blox Fruit") then
-                                LocalPlayer.Character.Humanoid:EquipTool(tool)
-                                break
-                            end
-                         end
                     end
                 else
                      UpdateStatus("Mob Not Found: " .. TargetMobName)
