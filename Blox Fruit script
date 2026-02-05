@@ -12,111 +12,151 @@ local Window = Rayfield:CreateWindow({
    KeySystem = false,
 })
 
-local MainTab = Window:CreateTab("Main Farm", 4483362458)
-local StatsTab = Window:CreateTab("Stats", 4483362458)
+local MainTab = Window:CreateTab("Auto Farm", 4483362458)
+local StatsTab = Window:CreateTab("Auto Stats", 4483362458)
 local MiscTab = Window:CreateTab("Misc", 4483362458)
 
 -- Variables
 _G.AutoFarm = false
+_G.AutoQuest = true -- Default to true if AutoFarm is on
 _G.AutoChest = false
 _G.AutoStats = false
-_G.SelectStat = "Melee" -- Melee, Defense, Sword, Gun, Demon Fruit
+_G.SelectStat = "Melee" 
 
--- Quest Data (Mock Data - In a full script this would be a huge table)
-local QuestData = {
-    [1] = {Level = 1, Name = "Bandit", QuestName = "BanditQuest1", CFrame = CFrame.new(1059.37, 16.37, 1549.14)},
-    [2] = {Level = 15, Name = "Monkey", QuestName = "JungleQuest", CFrame = CFrame.new(-1598.08, 35.55, 153.8)},
-    -- Add more quests as needed
+-- Data Tables
+local QuestList = {
+    -- Format: {LevelReq, QuestName, QuestGiverName, MobName, MobLevel}
+    -- Add more quests here by checking wiki or tools
+    {0, "BanditQuest1", "Bandit Quest Giver", "Bandit", 5},
+    {10, "JungleQuest", "Monkey Quest Giver", "Monkey", 14},
+    {15, "JungleQuest", "Monkey Quest Giver", "Gorilla", 20},
+    {30, "BuggyQuest1", "Pirate Adventurer", "Pirate", 35}, 
+    {40, "BuggyQuest1", "Pirate Adventurer", "Brute", 45},
+    {60, "DesertQuest", "Desert Adventurer", "Desert Bandit", 60},
+    {75, "DesertQuest", "Desert Adventurer", "Desert Officer", 70},
+    -- ... User can extend this list
 }
 
+-- Services
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local VirtualUser = game:GetService("VirtualUser")
+local Workspace = game:GetService("Workspace")
+
+local LocalPlayer = Players.LocalPlayer
+local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
+
 -- Helper Functions
-local function GetQuestData()
-    local level = game.Players.LocalPlayer.Data.Level.Value
-    local currentQuest = nil
-    for _, quest in pairs(QuestData) do
-        if level >= quest.Level then
-            currentQuest = quest
+local function GetCurrentQuestData()
+    local myLevel = LocalPlayer.Data.Level.Value
+    local bestQuest = nil
+    
+    for _, q in ipairs(QuestList) do
+        if myLevel >= q[1] then
+            bestQuest = q
         end
     end
-    return currentQuest
+    return bestQuest
+end
+
+local function CheckActiveQuest()
+    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if PlayerGui and PlayerGui:FindFirstChild("Main") and PlayerGui.Main:FindFirstChild("Quest") then
+        return PlayerGui.Main.Quest.Visible
+    end
+    return false
 end
 
 local function TweenTo(targetCFrame)
-    local player = game.Players.LocalPlayer
-    local character = player.Character or player.CharacterAdded:Wait()
-    local distance = (targetCFrame.Position - character.HumanoidRootPart.Position).Magnitude
-    local speed = 300
-    local tweenInfo = TweenInfo.new(distance / speed, Enum.EasingStyle.Linear)
-    local tween = game:GetService("TweenService"):Create(character.HumanoidRootPart, tweenInfo, {CFrame = targetCFrame})
-    tween:Play()
-    tween.Completed:Wait()
+    local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    if not Character:FindFirstChild("HumanoidRootPart") then return end
+    
+    local Distance = (Character.HumanoidRootPart.Position - targetCFrame.Position).Magnitude
+    local Speed = 300 
+    local Info = TweenInfo.new(Distance / Speed, Enum.EasingStyle.Linear)
+    
+    local Tween = TweenService:Create(Character.HumanoidRootPart, Info, {CFrame = targetCFrame})
+    Tween:Play()
+    
+    -- Anti-Fall / NoClip during tween
+    local Noclip = game:GetService("RunService").Stepped:Connect(function()
+        for _, part in pairs(Character:GetChildren()) do
+            if part:IsA("BasePart") then part.CanCollide = false end
+        end
+    end)
+    
+    Tween.Completed:Wait()
+    Noclip:Disconnect()
 end
 
-local function CheckQuest()
-    local player = game.Players.LocalPlayer
-    local myQuest = player.PlayerGui.Main.Quest.Container.QuestTitle.Title.Text
-    return myQuest ~= ""
+local function FindNPC(name)
+    for _, v in pairs(Workspace.NPCs:GetChildren()) do
+        if v.Name == name or v.Name:find(name) then
+            return v
+        end
+    end
+    -- Fallback for some maps where NPCs are structured differently
+    for _, v in pairs(Workspace:GetDescendants()) do
+        if v.Name == name and v:IsA("Model") and v:FindFirstChild("Head") then
+            return v
+        end
+    end
+    return nil
 end
 
--- Auto Farm Logic
+-- Main Loop
 spawn(function()
-    while wait() do
+    while task.wait() do
         if _G.AutoFarm then
             pcall(function()
-                local player = game.Players.LocalPlayer
-                local character = player.Character or player.CharacterAdded:Wait()
-                local currentQuestData = GetQuestData()
+                local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                if not Character:FindFirstChild("HumanoidRootPart") then return end
                 
-                if currentQuestData then
-                    if not CheckQuest() then
-                        -- Teleport to Quest Giver
-                        -- This needs real Quest Giver locations, using simplified logic here
-                         -- TweenTo(QuestGiverLocation)
-                        
-                        -- Accept Quest
-                        local args = {
-                            [1] = "StartQuest",
-                            [2] = currentQuestData.QuestName,
-                            [3] = 1
-                        }
-                        game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
-                    else
-                        -- Quest Active, Find Mob
-                        for _, v in pairs(game:GetService("Workspace").Enemies:GetChildren()) do
-                            if v.Name == currentQuestData.Name and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                                -- Tween to mob
-                                character.HumanoidRootPart.CFrame = v.HumanoidRootPart.CFrame * CFrame.new(0, 5, 0) -- Simplified for performance
-                                
-                                -- Auto Click
-                                game:GetService("VirtualUser"):CaptureController()
-                                game:GetService("VirtualUser"):Button1Down(Vector2.new(1280, 672))
-                                
-                                -- Skill Spam (Simple)
-                                -- game:GetService("VirtualInputManager"):SendKeyEvent(true, "Z", false, game)
-                                -- game:GetService("VirtualInputManager"):SendKeyEvent(true, "X", false, game)
-                                
-                                -- Fast Attack Mock
-                                v.Humanoid.Health = 0 -- Instant Kill Simulation
-                            end
+                local QuestData = GetCurrentQuestData()
+                if not QuestData then return end -- No quest found for this level
+                
+                if _G.AutoQuest and not CheckActiveQuest() then
+                    -- 1. Get Quest
+                    local NPC = FindNPC(QuestData[3])
+                    if NPC and NPC:FindFirstChild("HumanoidRootPart") then
+                        if (Character.HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude > 10 then
+                            TweenTo(NPC.HumanoidRootPart.CFrame)
+                        else
+                            -- Interact
+                            CommF:InvokeServer("StartQuest", QuestData[2], 1)
                         end
                     end
-                end
-            end)
-        end
-    end
-end)
-
--- Auto Chest Logic
-spawn(function()
-    while wait(0.5) do
-        if _G.AutoChest then
-            pcall(function()
-                for _, v in pairs(game:GetService("Workspace"):GetChildren()) do
-                    if v.Name:find("Chest") then
-                        local player = game.Players.LocalPlayer
-                        local character = player.Character or player.CharacterAdded:Wait()
-                        character.HumanoidRootPart.CFrame = v.CFrame
-                        wait(0.2)
+                else
+                    -- 2. Farm Mobs
+                    local Target = nil
+                    for _, v in pairs(Workspace.Enemies:GetChildren()) do
+                        if v.Name == QuestData[4] and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+                            Target = v
+                            break
+                        end
+                    end
+                    
+                    if Target then
+                        -- Teleport/Tween to Mob
+                        local AttackPos = Target.HumanoidRootPart.CFrame * CFrame.new(0, 5, 0)
+                        if (Character.HumanoidRootPart.Position - AttackPos.Position).Magnitude > 250 then
+                             TweenTo(AttackPos)
+                        else
+                             Character.HumanoidRootPart.CFrame = AttackPos
+                        end
+                        
+                        -- Auto Attack
+                        VirtualUser:CaptureController()
+                        VirtualUser:Button1Down(Vector2.new(1280, 672))
+                        
+                        -- Equip Weapon (First Tool)
+                        local Tool = LocalPlayer.Backpack:FindFirstChildOfClass("Tool") or Character:FindFirstChildOfClass("Tool")
+                        if LocalPlayer.Backpack:FindFirstChildOfClass("Tool") then
+                            LocalPlayer.Character.Humanoid:EquipTool(LocalPlayer.Backpack:FindFirstChildOfClass("Tool"))
+                        end
+                    else
+                        -- Wait for spawn / Mob Aura check
                     end
                 end
             end)
@@ -124,26 +164,30 @@ spawn(function()
     end
 end)
 
--- Auto Stats Logic
+-- Stats Loop
 spawn(function()
-    while wait(0.5) do
+    while task.wait(0.5) do
         if _G.AutoStats then
             pcall(function()
-                local args = {
-                    [1] = "AddPoint",
-                    [2] = _G.SelectStat,
-                    [3] = 1
+                -- Fix: Ensure correct arguments for AddPoint
+                -- Stats mapping: Melee, Defense, Sword, Gun, Blox Fruit
+                local StatMap = {
+                    ["Melee"] = "Melee",
+                    ["Defense"] = "Defense",
+                    ["Sword"] = "Sword",
+                    ["Gun"] = "Gun",
+                    ["Demon Fruit"] = "Demon Fruit" 
                 }
-                game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer(unpack(args))
+                
+                CommF:InvokeServer("AddPoint", StatMap[_G.SelectStat], 1)
             end)
         end
     end
 end)
 
-
--- UI Elements
+-- UI Setup
 MainTab:CreateToggle({
-   Name = "Auto Farm Level",
+   Name = "Enable Auto Farm",
    CurrentValue = false,
    Callback = function(Value)
       _G.AutoFarm = Value
@@ -151,15 +195,17 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-   Name = "Auto Farm Chests",
-   CurrentValue = false,
+   Name = "Auto Accept Quest",
+   CurrentValue = true,
    Callback = function(Value)
-      _G.AutoChest = Value
+      _G.AutoQuest = Value
    end,
 })
 
+MainTab:CreateLabel("Script will auto-detect level and quest")
+
 StatsTab:CreateDropdown({
-   Name = "Select Stat",
+   Name = "Select Stat to Upgrade",
    Options = {"Melee", "Defense", "Sword", "Gun", "Demon Fruit"},
    CurrentOption = "Melee",
    Callback = function(Option)
@@ -168,31 +214,34 @@ StatsTab:CreateDropdown({
 })
 
 StatsTab:CreateToggle({
-   Name = "Auto Upgrade Stats",
+   Name = "Auto Stats",
    CurrentValue = false,
    Callback = function(Value)
       _G.AutoStats = Value
    end,
 })
 
-MiscTab:CreateSlider({
-   Name = "WalkSpeed",
-   Range = {16, 300},
-   Increment = 1,
-   Suffix = "Speed",
-   CurrentValue = 16,
+MiscTab:CreateToggle({
+   Name = "Auto Chests",
+   CurrentValue = false,
    Callback = function(Value)
-      game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = Value
+      _G.AutoChest = Value
    end,
 })
 
-MiscTab:CreateSlider({
-   Name = "JumpPower",
-   Range = {50, 500},
-   Increment = 1,
-   Suffix = "Power",
-   CurrentValue = 50,
-   Callback = function(Value)
-      game.Players.LocalPlayer.Character.Humanoid.JumpPower = Value
-   end,
-})
+-- Auto Chest Loop
+spawn(function()
+    while task.wait(1) do
+        if _G.AutoChest then
+             pcall(function()
+                local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                for _, v in pairs(Workspace:GetChildren()) do
+                    if v.Name:find("Chest") and (v.Position - Character.HumanoidRootPart.Position).Magnitude < 3000 then
+                         TweenTo(v.CFrame)
+                         wait(1)
+                    end
+                end
+             end)
+        end
+    end
+end)
