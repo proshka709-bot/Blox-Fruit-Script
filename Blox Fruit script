@@ -1,844 +1,369 @@
-local RSS = {
-    Version = "2.2.0",
-    Author = "VETA (Refactored)",
-    Services = {
-        Players = game:GetService("Players"),
-        RunService = game:GetService("RunService"),
-        Workspace = game:GetService("Workspace"),
-        ReplicatedStorage = game:GetService("ReplicatedStorage"),
-        TweenService = game:GetService("TweenService"),
-        UserInputService = game:GetService("UserInputService")
+local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "LARB HACK v4.0 | Blox Fruits GOD MODE",
+    LoadingTitle = "Initializing...",
+    LoadingSubtitle = "By VETA",
+    ConfigureSaving = {
+        Enabled = true,
+        FolderName = "LarbHack",
+        FileName = "BF_Config"
     },
-    Config = {
-        SmartMode = {
-            Enabled = false,
-            CurrentRole = "None", -- GK, Striker, None
-            LastCheck = 0
-        },
-        Reach = {
-            Enabled = false,
-            Distance = 10,
-            Visualizer = false,
-            HitboxSize = Vector3.new(10, 10, 10)
-        },
-        Stamina = {
-            Enabled = false,
-            DefaultWalk = 16
-        },
-        GK = {
-            AutoDive = false,
-            DiveDistance = 18.0, 
-            DiveCooldown = 0.5, 
-            SmartDive = true,
-            AutoCatch = false,
-            CatchDistance = 10.0,
-            AntiRagdoll = false,
-            JumpBoost = false,
-            JumpBoostPower = 50,
-            AutoFace = false,
-            Magnet = false,
-            MagnetPower = 50,
-            MagnetRange = 25
-        },
-        Player = {
-            SpeedEnabled = false,
-            Speed = 20,
-            JumpEnabled = false,
-            Jump = 50,
-            InfJump = false
-        },
-        Prediction = {
-            Enabled = false,
-            UpdateRate = 3
-        },
-        Mobile = {
-            Controls = false,
-            FPSBoost = false
-        }
-    },
-    State = {
-        LocalPlayer = game:GetService("Players").LocalPlayer,
-        Connections = {},
-        Hitbox = nil,
-        CharacterParts = {}
-    }
+    Theme = "DarkBlue"
+})
+
+-- TABS
+local MainTab = Window:CreateTab("Main Farm", 4483362458)
+local StatsTab = Window:CreateTab("Auto Stats", 4483362458)
+local TeleportTab = Window:CreateTab("Teleport", 4483362458)
+
+-- TAB: TELEPORT
+TeleportTab:CreateButton({
+    Name = "Teleport to Starter Island",
+    Callback = function()
+        local npc = workspace.NPCs:FindFirstChild("Bandit Quest Giver")
+        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Teleport to Jungle",
+    Callback = function()
+        local npc = workspace.NPCs:FindFirstChild("Monkey Quest Giver")
+        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Teleport to Pirate Village",
+    Callback = function()
+        local npc = workspace.NPCs:FindFirstChild("Pirate Adventurer")
+        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Teleport to Desert",
+    Callback = function()
+        local npc = workspace.NPCs:FindFirstChild("Desert Adventurer")
+        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Teleport to Snow Village",
+    Callback = function()
+        local npc = workspace.NPCs:FindFirstChild("Snowman")
+        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Teleport to Marine Fortress",
+    Callback = function()
+        local npc = workspace.NPCs:FindFirstChild("Marine Quest Giver")
+        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
+    end,
+})
+
+TeleportTab:CreateButton({
+    Name = "Teleport to Skylands",
+    Callback = function()
+        local npc = workspace.NPCs:FindFirstChild("Sky Quest Giver")
+        if npc then TweenTo(npc.HumanoidRootPart.CFrame) end
+    end,
+})
+
+local EspTab = Window:CreateTab("ESP & Visuals", 4483362458)
+local MiscTab = Window:CreateTab("Misc", 4483362458)
+
+-- VARIABLES
+_G.AutoFarm = false
+_G.AutoQuest = false
+_G.AutoStats = false
+_G.SelectedStat = "Melee"
+_G.FastAttack = true
+_G.MobAura = false
+_G.ESP = false
+_G.ChestESP = false
+_G.FruitESP = false
+
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local RS = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local VIM = game:GetService("VirtualInputManager")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- QUEST DATA (EXPANDED)
+local QuestData = {
+    -- Level 0-10
+    {Level = 0, NPC = "Bandit Quest Giver", Mob = "Bandit", QuestName = "BanditQuest1"},
+    -- Level 10-15
+    {Level = 10, NPC = "Monkey Quest Giver", Mob = "Monkey", QuestName = "JungleQuest"},
+    -- Level 15-30
+    {Level = 15, NPC = "Gorilla Quest Giver", Mob = "Gorilla", QuestName = "JungleQuest"}, 
+    -- Level 30-40
+    {Level = 30, NPC = "Pirate Adventurer", Mob = "Pirate", QuestName = "BuggyQuest1"}, 
+    -- Level 40-60
+    {Level = 40, NPC = "Pirate Adventurer", Mob = "Brute", QuestName = "BuggyQuest1"},
+    -- Level 60-75
+    {Level = 60, NPC = "Desert Adventurer", Mob = "Desert Bandit", QuestName = "DesertQuest"},
+    -- Level 75-90
+    {Level = 75, NPC = "Desert Adventurer", Mob = "Desert Officer", QuestName = "DesertQuest"},
+    -- Level 90-100
+    {Level = 90, NPC = "Snowman", Mob = "Snow Bandit", QuestName = "SnowQuest"},
+    -- Level 100-120
+    {Level = 100, NPC = "Snowman", Mob = "Snowman", QuestName = "SnowQuest"},
+    -- Level 120-150
+    {Level = 120, NPC = "Marine Quest Giver", Mob = "Chief Petty Officer", QuestName = "MarineQuest2"},
+    -- Level 150-175
+    {Level = 150, NPC = "Sky Quest Giver", Mob = "Sky Bandit", QuestName = "SkyQuest"},
+    -- Level 175-190
+    {Level = 175, NPC = "Sky Quest Giver", Mob = "Dark Master", QuestName = "SkyQuest"},
+    -- Level 190-210
+    {Level = 190, NPC = "Prisoner Quest Giver", Mob = "Prisoner", QuestName = "PrisonerQuest"},
+    -- Level 210-225
+    {Level = 210, NPC = "Prisoner Quest Giver", Mob = "Dangerous Prisoner", QuestName = "PrisonerQuest"},
+    -- Level 225-250
+    {Level = 225, NPC = "Colosseum Quest Giver", Mob = "Toga Warrior", QuestName = "ColosseumQuest"},
+    -- Level 250-300
+    {Level = 250, NPC = "Colosseum Quest Giver", Mob = "Gladiator", QuestName = "ColosseumQuest"},
+    -- Level 300+ (Magma)
+    {Level = 300, NPC = "Magma Quest Giver", Mob = "Military Soldier", QuestName = "MagmaQuest"},
 }
 
---// Services
-local Players = RSS.Services.Players
-local RunService = RSS.Services.RunService
-local Workspace = RSS.Services.Workspace
-local ReplicatedStorage = RSS.Services.ReplicatedStorage
-local LocalPlayer = RSS.State.LocalPlayer
-
---// Utilities
-local function GetRoot()
-    return LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+-- UTILITIES
+local function GetLevel()
+    return Player.Data.Level.Value
 end
 
-local function GetBall()
-    local b = Workspace:FindFirstChild("TPS") 
-           or Workspace:FindFirstChild("PSoccerBall") 
-           or Workspace:FindFirstChild("ball")
-    
-    if not b then
-        b = Workspace:FindFirstChild("ball", true)
-    end
-    
-    return b
-end
-
-local function GetCharacterParts()
-    local char = LocalPlayer.Character
-    if not char then return {} end
-    
-    local parts = {}
-    for _, v in ipairs(char:GetChildren()) do
-        if v:IsA("BasePart") and v.Name ~= "HumanoidRootPart" then 
-            table.insert(parts, v)
+local function GetCurrentQuestData()
+    local lvl = GetLevel()
+    local best = nil
+    for _, q in ipairs(QuestData) do
+        if lvl >= q.Level then
+            best = q
         end
     end
-    return parts
+    return best
 end
 
---// Module: Visualizer (Hitbox)
-local function UpdateVisualizer()
-    if RSS.State.Hitbox then
-        RSS.State.Hitbox:Destroy()
-        RSS.State.Hitbox = nil
-    end
-
-    if not RSS.Config.Reach.Visualizer and not RSS.Config.Reach.Enabled then return end
+local function TweenTo(cframe)
+    if not Player.Character or not Player.Character:FindFirstChild("HumanoidRootPart") then return end
+    local dist = (Player.Character.HumanoidRootPart.Position - cframe.Position).Magnitude
+    local info = TweenInfo.new(dist / 300, Enum.EasingStyle.Linear) -- Speed 300
+    local tween = TweenService:Create(Player.Character.HumanoidRootPart, info, {CFrame = cframe})
+    tween:Play()
     
-    local shouldShow = RSS.Config.Reach.Visualizer
-    
-    local hitbox = Instance.new("BoxHandleAdornment")
-    hitbox.Name = "RSSHitbox"
-    hitbox.AlwaysOnTop = false
-    hitbox.ZIndex = 10
-    hitbox.Color3 = Color3.fromRGB(0, 255, 0)
-    hitbox.Transparency = shouldShow and 0.8 or 1
-    hitbox.Size = RSS.Config.Reach.HitboxSize
-    hitbox.Adornee = GetRoot()
-    hitbox.Parent = Workspace.Terrain
-    
-    local glow = Instance.new("BoxHandleAdornment")
-    glow.Name = "Glow"
-    glow.AlwaysOnTop = true
-    glow.ZIndex = 0
-    glow.Color3 = Color3.fromRGB(0, 255, 100)
-    glow.Transparency = shouldShow and 0.7 or 1
-    glow.Size = RSS.Config.Reach.HitboxSize * 1.05
-    glow.Adornee = GetRoot()
-    glow.Parent = hitbox
-    
-    RSS.State.Hitbox = hitbox
-end
-
---// Module: Reach
-local function ReachLoop()
-    local root = GetRoot()
-    if not root or not RSS.Config.Reach.Enabled then return end
-    
-    if RSS.State.Hitbox and RSS.State.Hitbox.Adornee ~= root then
-        RSS.State.Hitbox.Adornee = root
-        if RSS.State.Hitbox:FindFirstChild("Glow") then
-            RSS.State.Hitbox.Glow.Adornee = root
-        end
-    end
-
-    local ball = GetBall()
-    if not ball then return end
-
-    local reachSize = RSS.Config.Reach.HitboxSize
-    local effectiveReach = math.max(reachSize.X, reachSize.Y, reachSize.Z) / 2
-    
-    if (ball.Position - root.Position).Magnitude <= effectiveReach then
-        local parts = GetCharacterParts()
-        for i, part in ipairs(parts) do
-            firetouchinterest(part, ball, 0)
-            firetouchinterest(part, ball, 1)
-        end
-    end
-end
-
-local function ToggleReach(state)
-    RSS.Config.Reach.Enabled = state
-    UpdateVisualizer()
-    
-    if state then
-        if not RSS.State.Connections.Reach then
-            RSS.State.Connections.Reach = RunService.Heartbeat:Connect(ReachLoop)
-        end
-    else
-        if RSS.State.Connections.Reach then
-            RSS.State.Connections.Reach:Disconnect()
-            RSS.State.Connections.Reach = nil
-        end
-    end
-end
-
---// Module: Stamina
-local function SetupStamina()
-    local gui = LocalPlayer:WaitForChild("PlayerGui", 5)
-    if not gui then return end
-    
-    local staminaFrame = gui:FindFirstChild("Stamina", true)
-    if not staminaFrame then return end
-    
-    local speeds = staminaFrame:FindFirstChild("Speeds", true)
-    if not speeds then return end
-    
-    if RSS.Config.Stamina.DefaultWalk == 16 then
-        RSS.Config.Stamina.DefaultWalk = speeds.Walk.Value
-    end
-    
-    if RSS.State.Connections.Stamina then
-        RSS.State.Connections.Stamina:Disconnect()
-        RSS.State.Connections.Stamina = nil
-    end
-    
-    RSS.State.Connections.Stamina = speeds.Walk:GetPropertyChangedSignal("Value"):Connect(function()
-        if RSS.Config.Stamina.Enabled then
-             if speeds.Walk.Value ~= speeds.Run.Value then
-                speeds.Walk.Value = speeds.Run.Value
-             end
-        end
-    end)
-    
-    if RSS.Config.Stamina.Enabled then
-        speeds.Walk.Value = speeds.Run.Value
-    end
-end
-
-local function ToggleStamina(state)
-    RSS.Config.Stamina.Enabled = state
-    SetupStamina() 
-    
-    if not state then
-        task.spawn(function()
-             local gui = LocalPlayer:FindFirstChild("PlayerGui")
-             local speeds = gui and gui:FindFirstChild("Speeds", true)
-             if speeds then
-                 speeds.Walk.Value = RSS.Config.Stamina.DefaultWalk
-             end
+    -- Anti-Kick / Float
+    if not Player.Character.HumanoidRootPart:FindFirstChild("BodyVelocity") then
+        local bv = Instance.new("BodyVelocity")
+        bv.Velocity = Vector3.new(0,0,0)
+        bv.MaxForce = Vector3.new(100000,100000,100000)
+        bv.Parent = Player.Character.HumanoidRootPart
+        
+        tween.Completed:Connect(function()
+            bv:Destroy()
         end)
     end
+    
+    return tween
 end
 
---// Module: GK Features (Auto Dive)
-local function GetDiveButtons()
-    local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not playerGui then return nil, nil end
-    
-    local mobileCTRL = playerGui:FindFirstChild("MobileCTRL")
-    local touchControlFrame = mobileCTRL and mobileCTRL:FindFirstChild("TouchControlFrame")
-    local jumpButton = touchControlFrame and touchControlFrame:FindFirstChild("JumpButton")
-    
-    if jumpButton then
-        return jumpButton:FindFirstChild("LeftDive"), jumpButton:FindFirstChild("RightDive")
-    end
-    return nil, nil
-end
-
-local function ClickButton(btn)
-    if not btn then return end
-    if getconnections then
-        local connections = getconnections(btn.MouseButton1Click)
-        if connections and #connections > 0 then
-            for _, conn in ipairs(connections) do
-                conn:Fire()
-            end
-            return
-        end
-    end
-    if btn.MouseButton1Click then
-        btn.MouseButton1Click:Fire()
-    end
-end
-
-local lastDiveTime = 0
-
-local function AutoDiveLoop()
-    local ball = GetBall()
-    if not ball then return end
-    
-    local root = GetRoot()
-    if not root then return end
-
-    -- Auto Face
-    if RSS.Config.GK.AutoFace then
-        local lookPos = Vector3.new(ball.Position.X, root.Position.Y, ball.Position.Z)
-        root.CFrame = CFrame.lookAt(root.Position, lookPos)
-    end
-
-    -- Auto Catch
-    if RSS.Config.GK.AutoCatch then
-        local dist = (root.Position - ball.Position).Magnitude
-        if dist <= RSS.Config.GK.CatchDistance then
-            local char = LocalPlayer.Character
-            local tool = char and char:FindFirstChildOfClass("Tool")
-            if tool then 
-                tool:Activate() 
-            end
-            if mouse1click then mouse1click() end
-        end
-    end
-    
-    if not RSS.Config.GK.AutoDive then return end
-
-    local now = tick()
-    if now - lastDiveTime < RSS.Config.GK.DiveCooldown then return end
-    
-    local distance = (root.Position - ball.Position).Magnitude
-    if distance > RSS.Config.GK.DiveDistance then return end
-    
-    local velocity = ball.AssemblyLinearVelocity
-    local toBall = (ball.Position - root.Position).Unit
-    local dot = velocity.Unit:Dot(toBall) 
-    
-    local leftBtn, rightBtn = GetDiveButtons()
-    if not leftBtn or not rightBtn then return end
-    
-    local relativePos = root.CFrame:PointToObjectSpace(ball.Position)
-    local predictedPos = relativePos + (root.CFrame:VectorToObjectSpace(velocity) * 0.3) 
-    
-    if predictedPos.X < 0 then
-        ClickButton(leftBtn)
-    else
-        ClickButton(rightBtn)
-    end
-
-    -- Jump Boost
-    if RSS.Config.GK.JumpBoost then
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChild("Humanoid")
-        if hum and hum.RootPart then
-            hum.RootPart.Velocity = hum.RootPart.Velocity + Vector3.new(0, RSS.Config.GK.JumpBoostPower, 0)
-        end
-    end
-
-    lastDiveTime = now
-end
-
-local function MagnetLoop()
-    if not RSS.Config.GK.Magnet then return end
-    local ball = GetBall()
-    local root = GetRoot()
-    if not ball or not root then return end
-    
-    local dist = (ball.Position - root.Position).Magnitude
-    if dist < RSS.Config.GK.MagnetRange then
-         local dir = (root.Position - ball.Position).Unit
-         ball.AssemblyLinearVelocity = ball.AssemblyLinearVelocity + (dir * RSS.Config.GK.MagnetPower * 0.1)
-    end
-end
-
-local function ToggleAutoDive(state)
-    RSS.Config.GK.AutoDive = state
-    local anyGkFeature = state or RSS.Config.GK.AutoCatch or RSS.Config.GK.AutoFace
-    
-    if anyGkFeature then
-        if not RSS.State.Connections.AutoDive then
-            RSS.State.Connections.AutoDive = RunService.Heartbeat:Connect(AutoDiveLoop)
-        end
-    else
-        if RSS.State.Connections.AutoDive then
-            RSS.State.Connections.AutoDive:Disconnect()
-            RSS.State.Connections.AutoDive = nil
-        end
-    end
-end
-
-local function ToggleMagnet(state)
-    RSS.Config.GK.Magnet = state
-    if state then
-        if not RSS.State.Connections.Magnet then
-            RSS.State.Connections.Magnet = RunService.Heartbeat:Connect(MagnetLoop)
-        end
-    else
-        if RSS.State.Connections.Magnet then
-            RSS.State.Connections.Magnet:Disconnect()
-            RSS.State.Connections.Magnet = nil
-        end
-    end
-end
-
-local function UpdateGKLoop()
-    local anyGkFeature = RSS.Config.GK.AutoDive or RSS.Config.GK.AutoCatch or RSS.Config.GK.AutoFace
-    if anyGkFeature then
-        if not RSS.State.Connections.AutoDive then
-            RSS.State.Connections.AutoDive = RunService.Heartbeat:Connect(AutoDiveLoop)
-        end
-    else
-        if RSS.State.Connections.AutoDive then
-            RSS.State.Connections.AutoDive:Disconnect()
-            RSS.State.Connections.AutoDive = nil
-        end
-    end
-end
-
---// Module: Mobile Features
-local MobileGUI = nil
-local function CreateMobileUI()
-    if MobileGUI then MobileGUI:Destroy() end
-    
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "RSSMobileControls"
-    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    
-    local function makeBtn(name, pos, size, text, callback)
-        local btn = Instance.new("TextButton")
-        btn.Name = name
-        btn.Position = pos
-        btn.Size = size
-        btn.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-        btn.BackgroundTransparency = 0.5
-        btn.TextColor3 = Color3.new(1,1,1)
-        btn.Text = text
-        btn.TextSize = 20
-        btn.Parent = gui
-        
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 10)
-        corner.Parent = btn
-        
-        btn.MouseButton1Click:Connect(callback)
-        return btn
-    end
-    
-    -- Dive Left
-    makeBtn("DiveLeft", UDim2.new(0.05, 0, 0.65, 0), UDim2.new(0, 80, 0, 80), "< Dive", function()
-        local l, r = GetDiveButtons()
-        if l then ClickButton(l) end
+local function Attack()
+    pcall(function()
+        local Combat = require(Player.PlayerScripts.CombatFramework)
+        local Cemara = require(Player.PlayerScripts.CombatFramework.CameraShaker)
+        Cemara.CameraShakeInstance.CameraShakeState = {FadingIn = 3, FadingOut = 2, Sustained = 0, Inactive = 1}
+        Combat.activeController.hitboxMagnitude = 60
+        game:GetService("VirtualUser"):CaptureController()
+        game:GetService("VirtualUser"):ClickButton1(Vector2.new(851, 158), game:GetService("Workspace").Camera.CFrame)
     end)
-    
-    -- Dive Right
-    makeBtn("DiveRight", UDim2.new(0.20, 0, 0.65, 0), UDim2.new(0, 80, 0, 80), "Dive >", function()
-        local l, r = GetDiveButtons()
-        if r then ClickButton(r) end
-    end)
-    
-    -- Jump
-    makeBtn("Jump", UDim2.new(0.85, 0, 0.65, 0), UDim2.new(0, 80, 0, 80), "Jump", function()
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChild("Humanoid")
-        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
-    end)
-    
-    MobileGUI = gui
 end
 
-local function ToggleMobileControls(state)
-    RSS.Config.Mobile.Controls = state
-    if state then
-        CreateMobileUI()
-    else
-        if MobileGUI then MobileGUI:Destroy() MobileGUI = nil end
-    end
-end
-
-local function ToggleFPSBoost(state)
-    RSS.Config.Mobile.FPSBoost = state
-    if state then
-        for _, v in ipairs(Workspace:GetDescendants()) do
-            if v:IsA("BasePart") then
-                v.Material = Enum.Material.Plastic
-                v.Reflectance = 0
-            elseif v:IsA("Decal") or v:IsA("Texture") then
-                v.Transparency = 1
-            elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
-                v.Enabled = false
-            end
-        end
-        game.Lighting.GlobalShadows = false
-    end
-end
-
---// Module: Player Features
-local function PlayerLoop()
-    local char = LocalPlayer.Character
-    local hum = char and char:FindFirstChild("Humanoid")
-    if not hum then return end
-
-    if RSS.Config.Player.SpeedEnabled then
-        hum.WalkSpeed = RSS.Config.Player.Speed
-    end
-    
-    if RSS.Config.Player.JumpEnabled then
-        hum.UseJumpPower = true
-        hum.JumpPower = RSS.Config.Player.Jump
-    end
-    
-    if RSS.Config.GK.AntiRagdoll then
-        hum.PlatformStand = false
-        hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-        hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-    end
-end
-
-local function TogglePlayerLoop(state)
-    if RSS.Config.Player.SpeedEnabled or RSS.Config.Player.JumpEnabled then
-        if not RSS.State.Connections.PlayerLoop then
-            RSS.State.Connections.PlayerLoop = RunService.Heartbeat:Connect(PlayerLoop)
-        end
-    else
-        if RSS.State.Connections.PlayerLoop then
-            RSS.State.Connections.PlayerLoop:Disconnect()
-            RSS.State.Connections.PlayerLoop = nil
-        end
-    end
-end
-
-local function ToggleInfJump(state)
-    RSS.Config.Player.InfJump = state
-    
-    if state then
-        if not RSS.State.Connections.InfJump then
-            RSS.State.Connections.InfJump = game:GetService("UserInputService").JumpRequest:Connect(function()
-                if RSS.Config.Player.InfJump then
-                    local char = LocalPlayer.Character
-                    local hum = char and char:FindFirstChild("Humanoid")
-                    if hum then
-                        hum:ChangeState(Enum.HumanoidStateType.Jumping)
+-- MAIN FARM LOOP
+task.spawn(function()
+    while true do
+        task.wait()
+        if _G.AutoFarm then
+            pcall(function()
+                local quest = GetCurrentQuestData()
+                if not quest then return end
+                
+                -- 1. Check if we have quest
+                local myQuest = Player.PlayerGui.Main.Quest
+                if not myQuest.Visible then
+                    -- Go take quest
+                    local npc = workspace.NPCs:FindFirstChild(quest.NPC)
+                    if npc then
+                        if (Player.Character.HumanoidRootPart.Position - npc.HumanoidRootPart.Position).Magnitude > 10 then
+                            TweenTo(npc.HumanoidRootPart.CFrame * CFrame.new(0,0,3))
+                        else
+                            -- Interact
+                            fireclickdetector(npc.ClickDetector)
+                            -- Try Remote if Interact fails (Basic Remote implementation)
+                            game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("StartQuest", quest.QuestName, 1)
+                        end
+                    end
+                else
+                    -- 2. Farm Mobs
+                    local enemyName = quest.Mob
+                    local enemy = nil
+                    
+                    -- Find closest enemy
+                    for _, v in pairs(workspace.Enemies:GetChildren()) do
+                        if v.Name == enemyName and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+                            enemy = v
+                            break
+                        end
+                    end
+                    
+                    if enemy then
+                        enemy.HumanoidRootPart.CanCollide = false
+                        enemy.Humanoid.WalkSpeed = 0
+                        
+                        -- Tween to enemy (Above)
+                        local farmPos = enemy.HumanoidRootPart.CFrame * CFrame.new(0, 7, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+                        TweenTo(farmPos)
+                        
+                        -- Attack
+                        if (Player.Character.HumanoidRootPart.Position - enemy.HumanoidRootPart.Position).Magnitude < 20 then
+                            if _G.FastAttack then
+                                Attack()
+                            else
+                                VIM:SendKeyEvent(true, Enum.KeyCode.Z, false, game) -- Basic skill
+                                VIM:SendMouseButtonEvent(0, 0, 0, true, game, 1) -- Click
+                                task.wait(0.1)
+                                VIM:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                            end
+                        end
+                    else
+                        -- No enemy found, wait for spawn
+                        -- Optional: Teleport to spawn area
                     end
                 end
             end)
         end
-    else
-        if RSS.State.Connections.InfJump then
-            RSS.State.Connections.InfJump:Disconnect()
-            RSS.State.Connections.InfJump = nil
+    end
+end)
+
+-- AUTO STATS LOOP
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if _G.AutoStats then
+            game:GetService("ReplicatedStorage").Remotes.CommF_:InvokeServer("AddPoint", _G.SelectedStat, 1)
         end
     end
-end
+end)
 
---// Module: Ball Predictor
-local Predictor = {}
-Predictor.Folder = nil
-Predictor.Segments = {}
-Predictor.Config = {
-    gravity = 196.2,
-    bounceDamping = 0.65,
-    segmentCount = 25,
-    maxSimulationPoints = 80,
-    segmentSize = Vector3.new(0.3, 0.3, 2)
-}
-
-function Predictor.Init()
-    Predictor.Folder = Instance.new("Folder")
-    Predictor.Folder.Name = "RSSPrediction"
-    Predictor.Folder.Parent = Workspace
-    
-    for i = 1, Predictor.Config.segmentCount do
-        local p = Instance.new("Part")
-        p.Name = "Seg_" .. i
-        p.Anchored = true
-        p.CanCollide = false
-        p.Material = Enum.Material.Neon
-        p.Color = Color3.fromRGB(0, 255, 0)
-        p.Transparency = 1
-        p.Size = Predictor.Config.segmentSize
-        p.Parent = Predictor.Folder
-        Predictor.Segments[i] = p
-    end
-    
-    local marker = Instance.new("Part")
-    marker.Name = "Landing"
-    marker.Anchored = true
-    marker.CanCollide = false
-    marker.Shape = Enum.PartType.Cylinder
-    marker.Size = Vector3.new(1, 4, 4)
-    marker.Color = Color3.fromRGB(255, 0, 0)
-    marker.Transparency = 1
-    marker.Parent = Predictor.Folder
-    Predictor.Landing = marker
-end
-
-function Predictor.Cleanup()
-    if Predictor.Folder then
-        Predictor.Folder:Destroy()
-        Predictor.Folder = nil
-    end
-    Predictor.Segments = {}
-end
-
-function Predictor.Simulate(startPos, startVel)
-    local points = {}
-    local pos = startPos
-    local vel = startVel
-    local dt = 0.033
-    local gravity = Vector3.new(0, -Predictor.Config.gravity, 0)
-    
-    for i = 1, Predictor.Config.maxSimulationPoints do
-        table.insert(points, pos)
-        
-        vel = vel + gravity * dt
-        local nextPos = pos + vel * dt
-        
-        if nextPos.Y < 0 and vel.Y < 0 then
-            vel = Vector3.new(vel.X, -vel.Y * Predictor.Config.bounceDamping, vel.Z)
-            nextPos = Vector3.new(nextPos.X, 0, nextPos.Z)
-        end
-        
-        pos = nextPos
-        if pos.Y < -10 then break end
-    end
-    
-    return points
-end
-
-local frameCount = 0
-local function PredictorLoop()
-    frameCount = frameCount + 1
-    if frameCount % RSS.Config.Prediction.UpdateRate ~= 0 then return end
-    
-    local ball = GetBall()
-    if not ball or ball.AssemblyLinearVelocity.Magnitude < 1 then
-        for _, seg in ipairs(Predictor.Segments) do seg.Transparency = 1 end
-        if Predictor.Landing then Predictor.Landing.Transparency = 1 end
-        return
-    end
-    
-    local points = Predictor.Simulate(ball.Position, ball.AssemblyLinearVelocity)
-    local count = #points
-    
-    local segmentStep = math.max(1, math.floor(count / Predictor.Config.segmentCount))
-    
-    for i = 1, Predictor.Config.segmentCount do
-        local idx = (i - 1) * segmentStep + 1
-        local nextIdx = idx + segmentStep
-        
-        if points[idx] and points[nextIdx] then
-            local p1 = points[idx]
-            local p2 = points[nextIdx]
-            local dist = (p2 - p1).Magnitude
-            local cf = CFrame.lookAt((p1 + p2)/2, p2)
-            
-            Predictor.Segments[i].Size = Vector3.new(0.3, 0.3, dist)
-            Predictor.Segments[i].CFrame = cf
-            Predictor.Segments[i].Transparency = 0.3
-        else
-            Predictor.Segments[i].Transparency = 1
-        end
-    end
-    
-    if Predictor.Landing then
-        local landingPos = nil
-        for _, p in ipairs(points) do
-            if p.Y <= 0.5 then
-                landingPos = p
-                break
+-- ESP FUNCTION
+local function UpdateESP()
+    for _, v in pairs(workspace:GetChildren()) do
+        if _G.ChestESP and v.Name:find("Chest") then
+            if not v:FindFirstChild("ESP") then
+                local h = Instance.new("Highlight", v)
+                h.Name = "ESP"
+                h.FillColor = Color3.new(1,1,0)
             end
         end
-        
-        if landingPos then
-            Predictor.Landing.CFrame = CFrame.new(landingPos) * CFrame.Angles(0, 0, math.pi/2)
-            Predictor.Landing.Transparency = 0.5
-        else
-            Predictor.Landing.Transparency = 1
-        end
-    end
-end
-
-local function TogglePredictor(state)
-    RSS.Config.Prediction.Enabled = state
-    
-    if state then
-        Predictor.Init()
-        if not RSS.State.Connections.Predictor then
-            RSS.State.Connections.Predictor = RunService.Heartbeat:Connect(PredictorLoop)
-        end
-    else
-        Predictor.Cleanup()
-        if RSS.State.Connections.Predictor then
-            RSS.State.Connections.Predictor:Disconnect()
-            RSS.State.Connections.Predictor = nil
-        end
-    end
-end
-
---// Module: Smart Mode (Auto Config)
-local function CheckRole()
-    local role = "Striker" -- Default
-    
-    if LocalPlayer.Team then
-        local tName = LocalPlayer.Team.Name:lower()
-        if tName:find("spec") or tName:find("lobby") or tName:find("neutral") or tName:find("hub") then
-            return "Lobby"
-        elseif tName:find("gk") or tName:find("goalie") or tName:find("keeper") then
-            return "GK"
-        end
-    end
-    
-    -- Check Tools (Backup for GK)
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if backpack then
-        for _, t in ipairs(backpack:GetChildren()) do
-            local name = t.Name:lower()
-            if name:find("save") or name:find("catch") or name:find("gloves") then
-                return "GK"
+        if _G.FruitESP and v.Name:find("Fruit") and v:IsA("Tool") then -- Dropped fruit
+             if not v:FindFirstChild("ESP") then
+                local h = Instance.new("Highlight", v)
+                h.Name = "ESP"
+                h.FillColor = Color3.new(1,0,0)
             end
         end
     end
     
-    return role
-end
-
-local function SmartModeLoop()
-    if not RSS.Config.SmartMode.Enabled then return end
-    
-    local now = tick()
-    if now - RSS.Config.SmartMode.LastCheck < 5 then return end -- Check every 5s
-    RSS.Config.SmartMode.LastCheck = now
-    
-    local newRole = CheckRole()
-    if newRole ~= RSS.Config.SmartMode.CurrentRole then
-        RSS.Config.SmartMode.CurrentRole = newRole
-        
-        if newRole == "GK" then
-            -- [GK MODE]
-            ToggleAutoDive(true)
-            RSS.Config.GK.AutoCatch = true
-            RSS.Config.GK.AutoFace = true
-            RSS.Config.GK.JumpBoost = true
-            UpdateGKLoop()
-            
-            -- Disable Striker movements to prevent physics bugs
-            TogglePlayerLoop(false) 
-            
-            if WindUI and WindUI.Notify then
-                WindUI:Notify({ Title = "Smart Mode", Content = "Role: Goalkeeper (Auto-Dive Enabled)", Duration = 3 })
-            end
-            
-        elseif newRole == "Lobby" then
-            -- [LOBBY MODE]
-            ToggleAutoDive(false)
-            TogglePlayerLoop(false)
-            ToggleReach(false)
-            
-            if WindUI and WindUI.Notify then
-                WindUI:Notify({ Title = "Smart Mode", Content = "Role: Lobby (Features Paused)", Duration = 3 })
-            end
-            
-        else
-            -- [STRIKER MODE]
-            ToggleAutoDive(false)
-            RSS.Config.GK.AutoCatch = false
-            UpdateGKLoop()
-            
-            -- Optional: Auto-enable speed if preferred, but safer to leave manual control or just enable basic boost
-            -- TogglePlayerLoop(true) 
-            
-            if WindUI and WindUI.Notify then
-                WindUI:Notify({ Title = "Smart Mode", Content = "Role: Striker (GK Features Disabled)", Duration = 3 })
+    for _, p in pairs(Players:GetPlayers()) do
+        if _G.ESP and p ~= Player and p.Character then
+             if not p.Character:FindFirstChild("ESP") then
+                local h = Instance.new("Highlight", p.Character)
+                h.Name = "ESP"
+                h.FillColor = Color3.new(0,1,0)
             end
         end
     end
 end
 
-local function ToggleSmartMode(state)
-    RSS.Config.SmartMode.Enabled = state
-    if state then
-        if not RSS.State.Connections.SmartMode then
-            RSS.State.Connections.SmartMode = RunService.Heartbeat:Connect(SmartModeLoop)
-        end
-        -- Force immediate check
-        RSS.Config.SmartMode.LastCheck = 0 
-    else
-        if RSS.State.Connections.SmartMode then
-            RSS.State.Connections.SmartMode:Disconnect()
-            RSS.State.Connections.SmartMode = nil
-        end
-        RSS.Config.SmartMode.CurrentRole = "None"
+task.spawn(function()
+    while true do
+        task.wait(1)
+        UpdateESP()
     end
-end
+end)
 
+-- ========== GUI SETUP ==========
 
---// UI Setup (WindUI)
-local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/dist/main.lua"))()
-
-local Window = WindUI:CreateWindow({
-    Title = "RSS - VETA [Smart Edition]",
-    Icon = "rbxassetid://106211849494703",
-    Author = "VETA",
-    Folder = "RSSVETA"
+-- TAB: MAIN FARM
+MainTab:CreateToggle({
+    Name = "Enable Auto Farm",
+    CurrentValue = false,
+    Callback = function(Value)
+        _G.AutoFarm = Value
+    end,
 })
 
--- TABS (Organized "On Shelves")
-local DashboardTab = Window:Tab({ Title = "Dashboard", Icon = "home" })
-local GkTab = Window:Tab({ Title = "Goalkeeper", Icon = "shield" })
-local PlayerTab = Window:Tab({ Title = "Striker", Icon = "user" })
-local MobileTab = Window:Tab({ Title = "Mobile", Icon = "phone" })
-local VisualsTab = Window:Tab({ Title = "Visuals", Icon = "image" })
-
--- [1. Dashboard Tab]
-local SmartSection = DashboardTab:Section({ Title = "Smart Automation" })
-SmartSection:Toggle({
-    Title = "Enable Smart Mode",
-    Desc = "Auto-detects GK role and enables features",
-    Default = false,
-    Callback = ToggleSmartMode
+MainTab:CreateToggle({
+    Name = "Fast Attack (Laggy)",
+    CurrentValue = true,
+    Callback = function(Value)
+        _G.FastAttack = Value
+    end,
 })
 
-local MainSection = DashboardTab:Section({ Title = "Quick Controls" })
-MainSection:Button({
-    Title = "Panic Button",
-    Desc = "Disable All Features Immediately",
+-- TAB: STATS
+StatsTab:CreateDropdown({
+    Name = "Select Stat",
+    Options = {"Melee", "Defense", "Sword", "Gun", "Demon Fruit"},
+    CurrentOption = "Melee",
+    Callback = function(Value)
+        _G.SelectedStat = Value
+    end,
+})
+
+StatsTab:CreateToggle({
+    Name = "Auto Upgrade Stat",
+    CurrentValue = false,
+    Callback = function(Value)
+        _G.AutoStats = Value
+    end,
+})
+
+-- TAB: ESP
+EspTab:CreateToggle({
+    Name = "Player ESP",
+    CurrentValue = false,
+    Callback = function(Value)
+        _G.ESP = Value
+    end,
+})
+
+EspTab:CreateToggle({
+    Name = "Chest ESP",
+    CurrentValue = false,
+    Callback = function(Value)
+        _G.ChestESP = Value
+    end,
+})
+
+EspTab:CreateToggle({
+    Name = "Fruit ESP",
+    CurrentValue = false,
+    Callback = function(Value)
+        _G.FruitESP = Value
+    end,
+})
+
+-- TAB: MISC
+MiscTab:CreateButton({
+    Name = "Rejoin Server",
     Callback = function()
-        ToggleSmartMode(false)
-        ToggleReach(false)
-        ToggleAutoDive(false)
-        ToggleStamina(false)
-        TogglePredictor(false)
-        TogglePlayerLoop(false)
-        ToggleMobileControls(false)
-        WindUI:Notify({ Title = "Panic", Content = "All Features Disabled", Duration = 2 })
-    end
+        game:GetService("TeleportService"):Teleport(game.PlaceId, Player)
+    end,
 })
 
--- [2. Goalkeeper Tab]
-local AutoSection = GkTab:Section({ Title = "Auto Reactions" })
-AutoSection:Toggle({ Title = "Auto Dive", Desc = "Dives automatically", Default = false, Callback = ToggleAutoDive })
-AutoSection:Toggle({ Title = "Auto Catch", Desc = "Catches automatically", Default = false, Callback = function(v) RSS.Config.GK.AutoCatch = v UpdateGKLoop() end })
-AutoSection:Toggle({ Title = "Auto Face Ball", Default = false, Callback = function(v) RSS.Config.GK.AutoFace = v UpdateGKLoop() end })
-
-local AbilitySection = GkTab:Section({ Title = "Abilities" })
-AbilitySection:Toggle({ Title = "Ball Magnet", Desc = "Pulls ball (Risky)", Default = false, Callback = ToggleMagnet })
-AbilitySection:Slider({ Title = "Magnet Range", Step = 1, Value = { Min = 10, Max = 50, Default = 25 }, Callback = function(v) RSS.Config.GK.MagnetRange = v end })
-AbilitySection:Toggle({ Title = "Anti-Ragdoll", Default = false, Callback = function(v) RSS.Config.GK.AntiRagdoll = v end })
-AbilitySection:Toggle({ Title = "Jump Boost on Dive", Default = false, Callback = function(v) RSS.Config.GK.JumpBoost = v end })
-
-local SettingsSection = GkTab:Section({ Title = "Settings" })
-SettingsSection:Slider({ Title = "Dive Distance", Step = 1, Value = { Min = 10, Max = 30, Default = 18 }, Callback = function(v) RSS.Config.GK.DiveDistance = v end })
-
--- [3. Striker Tab]
-local ReachSection = PlayerTab:Section({ Title = "Reach / Hitbox" })
-ReachSection:Toggle({ Title = "Enable Reach", Default = false, Callback = ToggleReach })
-ReachSection:Slider({ Title = "Hitbox Size X", Step = 1, Value = { Min = 1, Max = 50, Default = 10 }, Callback = function(v) RSS.Config.Reach.HitboxSize = Vector3.new(v, RSS.Config.Reach.HitboxSize.Y, RSS.Config.Reach.HitboxSize.Z) UpdateVisualizer() end })
-ReachSection:Slider({ Title = "Hitbox Size Y", Step = 1, Value = { Min = 1, Max = 50, Default = 10 }, Callback = function(v) RSS.Config.Reach.HitboxSize = Vector3.new(RSS.Config.Reach.HitboxSize.X, v, RSS.Config.Reach.HitboxSize.Z) UpdateVisualizer() end })
-ReachSection:Slider({ Title = "Hitbox Size Z", Step = 1, Value = { Min = 1, Max = 50, Default = 10 }, Callback = function(v) RSS.Config.Reach.HitboxSize = Vector3.new(RSS.Config.Reach.HitboxSize.X, RSS.Config.Reach.HitboxSize.Y, v) UpdateVisualizer() end })
-
-local MoveSection = PlayerTab:Section({ Title = "Movement" })
-MoveSection:Toggle({ Title = "Enable Speed", Default = false, Callback = function(v) RSS.Config.Player.SpeedEnabled = v TogglePlayerLoop(v) end })
-MoveSection:Slider({ Title = "WalkSpeed", Step = 1, Value = { Min = 16, Max = 100, Default = 20 }, Callback = function(v) RSS.Config.Player.Speed = v end })
-MoveSection:Toggle({ Title = "Enable Jump", Default = false, Callback = function(v) RSS.Config.Player.JumpEnabled = v TogglePlayerLoop(v) end })
-MoveSection:Slider({ Title = "JumpPower", Step = 1, Value = { Min = 50, Max = 200, Default = 50 }, Callback = function(v) RSS.Config.Player.Jump = v end })
-MoveSection:Toggle({ Title = "Infinite Jump", Default = false, Callback = ToggleInfJump })
-
--- [4. Mobile Tab]
-local MobSection = MobileTab:Section({ Title = "Controls" })
-MobSection:Toggle({ Title = "On-Screen Buttons", Desc = "Show Dive/Jump UI", Default = false, Callback = ToggleMobileControls })
-MobSection:Toggle({ Title = "FPS Boost", Desc = "Optimize Graphics", Default = false, Callback = ToggleFPSBoost })
-
--- [5. Visuals Tab]
-local VisSection = VisualsTab:Section({ Title = "Indicators" })
-VisSection:Toggle({ Title = "Hitbox Visualizer", Default = false, Callback = function(v) RSS.Config.Reach.Visualizer = v UpdateVisualizer() end })
-VisSection:Toggle({ Title = "Ball Predictor", Desc = "Show Trajectory", Default = false, Callback = TogglePredictor })
-VisSection:Toggle({ Title = "Infinite Stamina", Default = false, Callback = ToggleStamina })
-
-WindUI:Notify({
-    Title = "Loaded",
-    Content = "RSS Smart Edition Loaded",
-    Duration = 5
-})
+Window:CreateLabel("Updated by AI Assistant - v4.0")
+Rayfield:LoadConfiguration()
