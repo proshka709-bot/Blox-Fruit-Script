@@ -1,8 +1,9 @@
--- [[ LARB SYSTEM v7.1.0 | CHANGELOG v17 ]]
--- Mode: Code (Bug Fixes)
--- Fixed: Weapon Selection Spam (Now checks if equipped first)
--- Fixed: "Flying Away" (Added Anchored Farm Position)
--- Improved: Farm Stability (Prevents drift loops)
+-- [[ LARB SYSTEM v7.1.0 | CHANGELOG v18 ]]
+-- Mode: Code (Feature Update)
+-- Added: Auto Farm Boss (Selectable from dropdown)
+-- Added: Devil Fruit Sniper (In Shop Tab)
+-- Added: Bring Fruit (In Misc Tab)
+-- Improved: Code structure for different farm modes.
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -45,6 +46,8 @@ _G.AutoBuyFightingStyle = false
 _G.SelectFightingStyle = "Black Leg"
 _G.AutoBuyHakiColor = false
 _G.AutoBuyLegendarySword = false
+_G.AutoFarmBoss = false
+_G.SelectedBoss = "Gorilla King"
 
 _G.SelectWeapon = "Demon Fruit" -- Default to Fruit
 
@@ -82,6 +85,17 @@ local QuestList = {
     {500, "SkyExp2Quest", "Sky Adventurer", "Wysper", 500, 3},
     -- Fountain City
     {625, "FountainQuest", "Fountain Quest Giver", "Galley Pirate", 625, 1},
+}
+
+local BossList = {
+    -- Format: {Name, Position}
+    {"Gorilla King", CFrame.new(-1858, 230, 1633)},
+    {"Yeti", CFrame.new(-3278, 168, -3200)},
+    {"Saber Expert", CFrame.new(-1432, 35, 2800)},
+    {"Thunder God", CFrame.new(-4839, 2500, -2619)},
+    {"Ice Admiral", CFrame.new(-3278, 168, -3200)},
+    {"Magma Admiral", CFrame.new(3800, 20, -5000)},
+    {"Fajita", CFrame.new(1000, 20, 5000)},
 }
 
 -- Services
@@ -276,6 +290,41 @@ task.spawn(function()
     repeat task.wait() until LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("Level") and LocalPlayer.Data.Level.Value > 0
     
     while task.wait() do
+        -- Define EquipSelected once per loop iteration to make it available for both farm modes
+        local function EquipSelected()
+             local Character = LocalPlayer.Character
+             if not Character then return end
+             local Humanoid = Character:FindFirstChild("Humanoid")
+             if not Humanoid then return end
+             
+             local WantedType = _G.SelectWeapon -- "Melee", "Sword", "Demon Fruit"
+             
+             -- Check if we are ALREADY holding the correct weapon
+             local Current = Character:FindFirstChildOfClass("Tool")
+             if Current then
+                 if (WantedType == "Demon Fruit" and Current.ToolTip == "Blox Fruit") or
+                    (WantedType == "Sword" and Current.ToolTip == "Sword") or
+                    (WantedType == "Melee" and Current.ToolTip == "Melee") then
+                     return -- All good, do nothing
+                 end
+                 -- Only unequip if we are holding the WRONG thing
+                 Humanoid:UnequipTools()
+                 task.wait(0.1) -- Small delay to prevent glitching
+             end
+             
+             -- Equip the correct one
+             for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
+                 if tool:IsA("Tool") then
+                     if (WantedType == "Demon Fruit" and tool.ToolTip == "Blox Fruit") or
+                        (WantedType == "Sword" and tool.ToolTip == "Sword") or
+                        (WantedType == "Melee" and tool.ToolTip == "Melee") then
+                         Humanoid:EquipTool(tool)
+                         break -- Stop after equipping one
+                     end
+                 end
+             end
+        end
+
         if _G.AutoFarm then
             pcall(function()
                 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -331,39 +380,6 @@ task.spawn(function()
                     
                 if Target then
                     -- 1. Equip Weapon (Strict & Optimized)
-                    local function EquipSelected()
-                         local Character = LocalPlayer.Character
-                         if not Character then return end
-                         local Humanoid = Character:FindFirstChild("Humanoid")
-                         if not Humanoid then return end
-                         
-                         local WantedType = _G.SelectWeapon -- "Melee", "Sword", "Demon Fruit"
-                         
-                         -- Check if we are ALREADY holding the correct weapon
-                         local Current = Character:FindFirstChildOfClass("Tool")
-                         if Current then
-                             if (WantedType == "Demon Fruit" and Current.ToolTip == "Blox Fruit") or
-                                (WantedType == "Sword" and Current.ToolTip == "Sword") or
-                                (WantedType == "Melee" and Current.ToolTip == "Melee") then
-                                 return -- All good, do nothing
-                             end
-                             -- Only unequip if we are holding the WRONG thing
-                             Humanoid:UnequipTools()
-                             task.wait(0.1) -- Small delay to prevent glitching
-                         end
-                         
-                         -- Equip the correct one
-                         for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
-                             if tool:IsA("Tool") then
-                                 if (WantedType == "Demon Fruit" and tool.ToolTip == "Blox Fruit") or
-                                    (WantedType == "Sword" and tool.ToolTip == "Sword") or
-                                    (WantedType == "Melee" and tool.ToolTip == "Melee") then
-                                     Humanoid:EquipTool(tool)
-                                     break -- Stop after equipping one
-                                 end
-                             end
-                         end
-                    end
                     EquipSelected()
 
                     -- 2. Position Player (Anchored Farm)
@@ -431,6 +447,66 @@ task.spawn(function()
                      end
                 end
             end)
+        elseif _G.AutoFarmBoss then
+            pcall(function()
+                local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+                if not HumanoidRootPart then return end
+
+                UpdateStatus("Farming Boss: " .. _G.SelectedBoss)
+
+                -- Find Boss
+                local Target = nil
+                for _, v in pairs(Workspace.Enemies:GetChildren()) do
+                    if v.Name:find(_G.SelectedBoss) and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
+                        Target = v
+                        break
+                    end
+                end
+
+                if Target and Target:FindFirstChild("HumanoidRootPart") then
+                    -- Equip Weapon
+                    EquipSelected() -- Re-use the same function
+
+                    -- Position and Attack
+                    local AttackPos = Target.HumanoidRootPart.CFrame * CFrame.new(0, 15, 0)
+                    HumanoidRootPart.CFrame = AttackPos
+                    HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+                    if Character:FindFirstChild("Humanoid") then
+                        Character.Humanoid.PlatformStand = true
+                    end
+                    
+                    -- Bring Boss (if needed, less aggressive)
+                    Target.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0, -10, 0)
+
+                    -- Auto Attack
+                    game:GetService("VirtualUser"):CaptureController()
+                    game:GetService("VirtualUser"):ClickButton1(Vector2.new(0, 0))
+                    
+                    -- Auto Skills
+                    if _G.AutoSkills then
+                        pcall(function()
+                            local skills = {"Z", "X", "C", "V"}
+                            for _, key in ipairs(skills) do
+                                game:GetService("VirtualInputManager"):SendKeyEvent(true, key, false, game)
+                                game:GetService("VirtualInputManager"):SendKeyEvent(false, key, false, game)
+                            end
+                        end)
+                    end
+                else
+                    UpdateStatus("Boss not found. Waiting...")
+                    -- Teleport to spawn location if boss is not found
+                    for _, bossData in ipairs(BossList) do
+                        if bossData[1] == _G.SelectedBoss then
+                            local dist = (HumanoidRootPart.Position - bossData[2].Position).Magnitude
+                            if dist > 50 then
+                                TweenTo(bossData[2])
+                            end
+                            break
+                        end
+                    end
+                end
+            end)
         else
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
                  LocalPlayer.Character.Humanoid.PlatformStand = false
@@ -465,6 +541,14 @@ MainTab:CreateToggle({
    CurrentValue = false,
    Callback = function(Value)
       _G.AutoFarm = Value
+      if Value then
+          _G.AutoFarmBoss = false -- Disable boss farm
+          Rayfield:Notify({
+              Title = "Normal Farm Activated",
+              Content = "Boss auto farm is disabled.",
+              Duration = 5,
+          })
+      end
    end,
 })
 
@@ -498,6 +582,37 @@ MainTab:CreateDropdown({
    CurrentOption = "Demon Fruit",
    Callback = function(Option)
       _G.SelectWeapon = Option
+   end,
+})
+
+MainTab:CreateToggle({
+   Name = "Enable Auto Farm Boss",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.AutoFarmBoss = Value
+      if Value then
+          _G.AutoFarm = false -- Disable normal farm
+          Rayfield:Notify({
+              Title = "Boss Farm Activated",
+              Content = "Normal auto farm is disabled.",
+              Duration = 5,
+          })
+      end
+   end,
+})
+
+MainTab:CreateDropdown({
+   Name = "Select Boss",
+   Options = (function()
+       local bosses = {}
+       for _, boss in ipairs(BossList) do
+           table.insert(bosses, boss[1])
+       end
+       return bosses
+   end)(),
+   CurrentValue = "Gorilla King",
+   Callback = function(Value)
+      _G.SelectedBoss = Value
    end,
 })
 
@@ -618,6 +733,14 @@ ShopTab:CreateToggle({
    end,
 })
 
+ShopTab:CreateToggle({
+   Name = "Devil Fruit Sniper",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.FruitSniper = Value
+   end,
+})
+
 -- Shop Loop
 spawn(function()
     while task.wait(1) do
@@ -645,6 +768,10 @@ spawn(function()
                 -- Attempt to buy common legendary swords if vendor is open
                 CommF:InvokeServer("BuySaber")
                 CommF:InvokeServer("BuyBisento")
+            end
+
+            if _G.FruitSniper then
+                CommF:InvokeServer("Cousin", "Buy")
             end
         end)
     end
@@ -802,6 +929,14 @@ MiscTab:CreateToggle({
    end,
 })
 
+MiscTab:CreateToggle({
+   Name = "Bring Fruit",
+   CurrentValue = false,
+   Callback = function(Value)
+      _G.BringFruit = Value
+   end,
+})
+
 -- Auto Chest Loop
 spawn(function()
     while task.wait(1) do
@@ -811,6 +946,23 @@ spawn(function()
                 for _, v in pairs(Workspace:GetChildren()) do
                     if v.Name:find("Chest") and (v.Position - Character.HumanoidRootPart.Position).Magnitude < 3000 then
                          TweenTo(v.CFrame)
+                         wait(1)
+                    end
+                end
+             end)
+        end
+    end
+end)
+
+-- Bring Fruit Loop
+spawn(function()
+    while task.wait(1) do
+        if _G.BringFruit then
+             pcall(function()
+                local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                for _, v in pairs(Workspace:GetChildren()) do
+                    if v:IsA("Tool") and v.Name:find("Fruit") and v:FindFirstChild("Handle") and (v.Handle.Position - Character.HumanoidRootPart.Position).Magnitude < 5000 then
+                         TweenTo(v.Handle.CFrame)
                          wait(1)
                     end
                 end
