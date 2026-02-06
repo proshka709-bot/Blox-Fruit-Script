@@ -1,10 +1,10 @@
--- [[ LARB SYSTEM v7.1.0 | CHANGELOG v22 ]]
--- Mode: Code (Reliability & Performance)
--- Feature: GetActiveQuestTarget() is now more robust with a fallback search.
--- Feature: Added Anti-AFK mechanism.
--- Feature: Implemented a Weapon Priority system for smarter weapon selection.
--- Optimized: Mob Magnet now uses caching and a more efficient enemy state change.
--- Stability: Implemented SafeCall error handling for main farm loops to prevent crashes.
+ -- [[ LARB SYSTEM v7.1.0 | CHANGELOG v22 ]]
+ -- Mode: Code (Reliability & Performance)
+ -- Feature: GetActiveQuestTarget() is now more robust with a fallback search.
+ -- Feature: Added Anti-AFK mechanism.
+ -- Feature: Implemented a Weapon Priority system for smarter weapon selection.
+ -- Optimized: Mob Magnet now uses caching and a more efficient enemy state change.
+ -- Stability: Implemented SafeCall error handling for main farm loops to prevent crashes.
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -354,8 +354,12 @@ local function UpdateESP()
         for _, folder in pairs(searchFolders) do
             if folder then
                 for _, v in pairs(folder:GetDescendants()) do
-                    if v.Name:find("Chest") and v:IsA("MeshPart") then
-                        CreateESP(v, "Chest", "Chest", Color3.new(1, 1, 0))
+                    if v.Name:find("Chest") then
+                        if v:IsA("MeshPart") or v:IsA("Part") then
+                            CreateESP(v, "Chest", "CHEST", Color3.fromRGB(255, 255, 0))
+                        elseif v:IsA("Model") and v:FindFirstChild("Handle") and v.Handle:IsA("BasePart") then
+                            CreateESP(v.Handle, "Chest", "CHEST", Color3.fromRGB(255, 255, 0))
+                        end
                     end
                 end
             end
@@ -1047,18 +1051,39 @@ MiscTab:CreateToggle({
 spawn(function()
     while task.wait(1) do
         if _G.AutoChest then
-             pcall(function()
+            pcall(function()
                 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                for _, v in pairs(Workspace:GetDescendants()) do
-                   if v.Name:find("Chest") and v:IsA("Model") and v:FindFirstChild("Handle") then
-                        -- Check if chest is accessible (not already opened)
-                        if v.Handle.Transparency == 0 then
-                             TweenTo(v.Handle.CFrame)
-                             wait(1)
+                local Root = Character:FindFirstChild("HumanoidRootPart")
+                if not Root then return end
+                local searchFolders = {Workspace:FindFirstChild("Map"), Workspace}
+                local chestTargets = {}
+                for _, folder in pairs(searchFolders) do
+                    if folder then
+                        for _, v in pairs(folder:GetDescendants()) do
+                            if v.Name:find("Chest") then
+                                if v:IsA("Model") and v:FindFirstChild("Handle") and v.Handle:IsA("BasePart") and v.Handle.Transparency == 0 then
+                                    table.insert(chestTargets, v.Handle)
+                                elseif (v:IsA("MeshPart") or v:IsA("Part")) and v.Transparency == 0 then
+                                    table.insert(chestTargets, v)
+                                end
+                            end
                         end
-                   end
+                    end
                 end
-             end)
+                for _, chest in ipairs(chestTargets) do
+                    if not _G.AutoChest then break end
+                    if chest and chest.Parent then
+                        local targetCF = chest.CFrame
+                        local dist = (Root.Position - targetCF.Position).Magnitude
+                        if dist > 250 then
+                            TweenTo(targetCF)
+                        else
+                            Root.CFrame = targetCF
+                        end
+                        task.wait(0.5)
+                    end
+                end
+            end)
         end
     end
 end)
