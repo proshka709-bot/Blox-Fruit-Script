@@ -1,9 +1,8 @@
--- [[ LARB SYSTEM v7.1.0 | CHANGELOG v18 ]]
--- Mode: Code (Feature Update)
--- Added: Auto Farm Boss (Selectable from dropdown)
--- Added: Devil Fruit Sniper (In Shop Tab)
--- Added: Bring Fruit (In Misc Tab)
--- Improved: Code structure for different farm modes.
+-- [[ LARB SYSTEM v7.1.0 | CHANGELOG v19 ]]
+-- Mode: Code (Improvement)
+-- Improved: Auto Chest Farm (now finds all chests on the map)
+-- Improved: Chest ESP (now shows all chests on the map)
+-- Fixed: Logic for identifying and targeting chests.
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
@@ -255,15 +254,15 @@ task.spawn(function()
         end
         
         if _G.ESPChest then
-            for _, v in pairs(Workspace:GetChildren()) do
-                if v.Name:find("Chest") then
-                    CreateESP(v, v.Name, Color3.new(1, 1, 0))
+            for _, v in pairs(Workspace:GetDescendants()) do
+                if v.Name:find("Chest") and v:IsA("Model") and v:FindFirstChild("Handle") then
+                    CreateESP(v.Handle, "Chest", Color3.new(1, 1, 0))
                 end
             end
         else
-            for _, v in pairs(Workspace:GetChildren()) do
-                if v.Name:find("Chest") and v:FindFirstChild("ESP") then
-                    v.ESP:Destroy()
+            for _, v in pairs(Workspace:GetDescendants()) do
+                if v.Name:find("Chest") and v:IsA("Model") and v:FindFirstChild("Handle") and v.Handle:FindFirstChild("ESP") then
+                    v.Handle.ESP:Destroy()
                 end
             end
         end
@@ -943,11 +942,14 @@ spawn(function()
         if _G.AutoChest then
              pcall(function()
                 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                for _, v in pairs(Workspace:GetChildren()) do
-                    if v.Name:find("Chest") and (v.Position - Character.HumanoidRootPart.Position).Magnitude < 3000 then
-                         TweenTo(v.CFrame)
-                         wait(1)
-                    end
+                for _, v in pairs(Workspace:GetDescendants()) do
+                   if v.Name:find("Chest") and v:IsA("Model") and v:FindFirstChild("Handle") then
+                        -- Check if chest is accessible (not already opened)
+                        if v.Handle.Transparency == 0 then
+                             TweenTo(v.Handle.CFrame)
+                             wait(1)
+                        end
+                   end
                 end
              end)
         end
