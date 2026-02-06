@@ -1,14 +1,16 @@
--- [[ LARB SYSTEM v7.1.0 | CHANGELOG v19 ]]
--- Mode: Code (Improvement)
--- Improved: Auto Chest Farm (now finds all chests on the map)
--- Improved: Chest ESP (now shows all chests on the map)
--- Fixed: Logic for identifying and targeting chests.
+-- [[ LARB SYSTEM v7.1.0 | CHANGELOG v22 ]]
+-- Mode: Code (Reliability & Performance)
+-- Feature: GetActiveQuestTarget() is now more robust with a fallback search.
+-- Feature: Added Anti-AFK mechanism.
+-- Feature: Implemented a Weapon Priority system for smarter weapon selection.
+-- Optimized: Mob Magnet now uses caching and a more efficient enemy state change.
+-- Stability: Implemented SafeCall error handling for main farm loops to prevent crashes.
 
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 
 local Window = Rayfield:CreateWindow({
    Name = "LARB HACK | Blox Fruits Ultimate",
-   LoadingTitle = "AA-7.0 Optimization",
+   LoadingTitle = "AA-7.1 Optimization",
    LoadingSubtitle = "By LARB SYSTEM",
    ConfigurationSaving = {
       Enabled = true,
@@ -51,6 +53,21 @@ _G.SelectedBoss = "Gorilla King"
 _G.SelectWeapon = "Demon Fruit" -- Default to Fruit
 
 -- Data Tables
+local QuestGiverCoordinates = {
+    ["BanditQuest1"] = CFrame.new(-1124, 17, 144),
+    ["BanditQuest2"] = CFrame.new(-1124, 17, 144),
+    ["MonkeyQuest"] = CFrame.new(-1534, 36, 1340),
+    ["PirateQuest"] = CFrame.new(114, 17, 4837),
+    ["DesertQuest"] = CFrame.new(1034, 1, -841),
+    ["ImpelDownQuest"] = CFrame.new(4183, -1, -5612),
+    ["ArenaQuest"] = CFrame.new(-670, 17, 4350),
+    ["MagmaQuest"] = CFrame.new(3800, 20, -5000),
+    ["FishmanQuest"] = CFrame.new(-1432, -250, 2800),
+    ["SkyExp1Quest"] = CFrame.new(-4839, 850, -2619),
+    ["SkyExp2Quest"] = CFrame.new(-4839, 2500, -2619),
+    ["FountainQuest"] = CFrame.new(-800, 150, 1500)
+}
+
 local QuestList = {
     -- Format: {LevelReq, QuestName, QuestGiverName, MobName, MobLevel, QuestID}
     {0, "BanditQuest1", "Bandit Quest Giver", "Bandit", 5, 1},
@@ -103,11 +120,34 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local VirtualUser = game:GetService("VirtualUser")
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
 
+-- Anti-AFK
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
+
 -- Helper Functions
+local ErrorLog = {}
+
+local function SafeCall(func, context)
+    local success, result = pcall(func)
+    if not success then
+        table.insert(ErrorLog, {
+            Time = os.date("%H:%M:%S"),
+            Context = context,
+            Error = tostring(result)
+        })
+        UpdateStatus("Error: " .. context)
+        warn("[LARB ERROR]", context, ":", result)
+    end
+    return success, result
+end
+
 local function UpdateStatus(text)
     StatusLabel:Set("Status: " .. text)
 end
@@ -133,199 +173,271 @@ local function CheckActiveQuest()
 end
 
 local function GetActiveQuestTarget()
-    -- Attempt to read Quest Title from GUI
     local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if PlayerGui and PlayerGui:FindFirstChild("Main") and PlayerGui.Main:FindFirstChild("Quest") and PlayerGui.Main.Quest.Visible then
-        local Container = PlayerGui.Main.Quest:FindFirstChild("Container")
-        if Container and Container:FindFirstChild("QuestTitle") and Container.QuestTitle:FindFirstChild("Title") then
-            local text = Container.QuestTitle.Title.Text
-            -- Format is usually "Defeat [Amount] [MobName]" or just "[MobName]"
-            -- Simple parse: try to match known mobs from QuestList
-            for _, q in ipairs(QuestList) do
-                 if text:find(q[4]) then
-                     return q[4]
-                 end
+    if not (PlayerGui and PlayerGui:FindFirstChild("Main") and
+            PlayerGui.Main:FindFirstChild("Quest") and
+            PlayerGui.Main.Quest.Visible) then
+        return nil
+    end
+
+    local Container = PlayerGui.Main.Quest:FindFirstChild("Container")
+    if not (Container and Container:FindFirstChild("QuestTitle") and
+            Container.QuestTitle:FindFirstChild("Title")) then
+        return nil
+    end
+
+    local text = Container.QuestTitle.Title.Text:lower() -- lowercase для сравнения
+
+    -- Более умный парсинг
+    for _, q in ipairs(QuestList) do
+        if text:find(q[4]:lower()) then
+            return q[4]
+        end
+    end
+
+    -- Fallback: проверяем все моби в Enemies
+    for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
+        if text:find(enemy.Name:lower()) then
+            return enemy.Name
+        end
+    end
+
+    return nil
+end
+
+local function WaitForMobRespawn(mobName, timeout)
+    local startTime = tick()
+    while tick() - startTime < (timeout or 30) do
+        for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
+            if enemy.Name:find(mobName) and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
+                return enemy
             end
         end
+        task.wait(1)
     end
     return nil
 end
 
+local CurrentTween = nil
+
 local function TweenTo(targetCFrame)
-    local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    if not Character:FindFirstChild("HumanoidRootPart") then return end
-    
-    local Distance = (Character.HumanoidRootPart.Position - targetCFrame.Position).Magnitude
-    local Speed = 300 
-    local Info = TweenInfo.new(Distance / Speed, Enum.EasingStyle.Linear)
-    
-    local Tween = TweenService:Create(Character.HumanoidRootPart, Info, {CFrame = targetCFrame})
-    Tween:Play()
-    
-    -- Anti-Fall / NoClip during tween
-    local Noclip = game:GetService("RunService").Stepped:Connect(function()
-        for _, part in pairs(Character:GetChildren()) do
-            if part:IsA("BasePart") then part.CanCollide = false end
-        end
+    local Character = LocalPlayer.Character
+    if not Character or not Character:FindFirstChild("HumanoidRootPart") then
+        return false
+    end
+
+    local Root = Character.HumanoidRootPart
+    local distance = (Root.Position - targetCFrame.Position).Magnitude
+
+    if CurrentTween then
+        CurrentTween:Cancel()
+        CurrentTween = nil
+    end
+
+    local speed = distance > 1000 and 300 or 150
+    local tweenInfo = TweenInfo.new(
+        distance / speed,
+        Enum.EasingStyle.Linear,
+        Enum.EasingDirection.Out
+    )
+
+    CurrentTween = TweenService:Create(Root, tweenInfo, { CFrame = targetCFrame })
+
+    local success = pcall(function()
+        _G.NoClip = true
+        CurrentTween:Play()
+        CurrentTween.Completed:Wait()
     end)
-    
-    Tween.Completed:Wait()
-    Noclip:Disconnect()
+
+    _G.NoClip = false
+    CurrentTween = nil
+    return success
 end
 
-local function FindNPC(name)
-    -- Prioritize NPCs folder
-    if Workspace:FindFirstChild("NPCs") then
-        for _, v in pairs(Workspace.NPCs:GetChildren()) do
-            if v.Name == name or v.Name:find(name) then
-                return v
+RunService.Stepped:Connect(function()
+    if _G.NoClip and LocalPlayer.Character then
+        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.CanCollide = false
             end
         end
     end
+end)
+
+local NPCCache = {}
+local LastCacheUpdate = 0
+
+local function FindNPC(name)
+    if tick() - LastCacheUpdate > 5 then
+        NPCCache = {}
+        if Workspace:FindFirstChild("NPCs") then
+            for _, v in pairs(Workspace.NPCs:GetChildren()) do
+                NPCCache[v.Name] = v
+            end
+        end
+        LastCacheUpdate = tick()
+    end
+
+    if NPCCache[name] and NPCCache[name].Parent then
+        return NPCCache[name]
+    end
+
+    for npcName, npc in pairs(NPCCache) do
+        if npcName:find(name) and npc.Parent then
+            return npc
+        end
+    end
     
-    -- Search everywhere else (Cache this if possible, but for now linear search)
-    for _, v in pairs(Workspace:GetChildren()) do
-        if (v.Name == name or v.Name:find(name)) and v:IsA("Model") and v:FindFirstChild("Head") then
+    -- Fallback for bosses/mobs not in NPCs folder
+    for _, v in pairs(Workspace.Enemies:GetChildren()) do
+        if v.Name:find(name) then
             return v
         end
     end
+
     return nil
 end
 
--- ESP System
 local ESPTable = {}
-local RunService = game:GetService("RunService")
 
-RunService.RenderStepped:Connect(function()
-    for i, v in pairs(ESPTable) do
-        if v.Target and v.Target.Parent and v.BillboardGui and v.BillboardGui.Parent then
-            local dist = (LocalPlayer.Character.HumanoidRootPart.Position - v.Target.Position).Magnitude
-            v.TextLabel.Text = v.Name .. " [" .. math.floor(dist) .. "m]"
-        else
-            if v.BillboardGui then v.BillboardGui:Destroy() end
-            table.remove(ESPTable, i)
-        end
-    end
-end)
-
-local function CreateESP(target, name, color)
-    if target:FindFirstChild("ESP") then return end
+local function CreateESP(part, espType, name, color)
+    if not part or ESPTable[part] then return end
 
     local BillboardGui = Instance.new("BillboardGui")
-    local TextLabel = Instance.new("TextLabel")
-    
     BillboardGui.Name = "ESP"
-    BillboardGui.Adornee = target
-    BillboardGui.Size = UDim2.new(0, 200, 0, 50)
-    BillboardGui.StudsOffset = Vector3.new(0, 2, 0)
+    BillboardGui.Adornee = part
+    BillboardGui.Size = UDim2.new(0, 100, 0, 50)
     BillboardGui.AlwaysOnTop = true
-    BillboardGui.Parent = target
-    
+    BillboardGui.ResetOnSpawn = false
+
+    local TextLabel = Instance.new("TextLabel")
     TextLabel.Parent = BillboardGui
-    TextLabel.BackgroundTransparency = 1
+    TextLabel.BackgroundColor3 = Color3.new(0, 0, 0)
+    TextLabel.BackgroundTransparency = 0.5
     TextLabel.Size = UDim2.new(1, 0, 1, 0)
+    TextLabel.TextColor3 = color or Color3.new(1, 1, 1)
+    TextLabel.TextScaled = true
+    TextLabel.Font = Enum.Font.SourceSansBold
     TextLabel.Text = name
-    TextLabel.TextColor3 = color
-    TextLabel.TextStrokeTransparency = 0
-    
-    table.insert(ESPTable, {
-        Target = target,
-        Name = name,
-        BillboardGui = BillboardGui,
-        TextLabel = TextLabel
-    })
+
+    BillboardGui.Parent = part
+    ESPTable[part] = {Gui = BillboardGui, Type = espType}
 end
 
--- ESP Finder Loop
-task.spawn(function()
-    while task.wait(1) do
-        if _G.ESPPlayer then
-            for _, v in pairs(Players:GetPlayers()) do
-                if v ~= LocalPlayer and v.Character and v.Character:FindFirstChild("Head") then
-                    CreateESP(v.Character.Head, v.Name, Color3.new(1, 0, 0))
-                end
+local function UpdateESP()
+    -- Clear old ESPs based on toggle status
+    for part, data in pairs(ESPTable) do
+        local shouldRemove = false
+        if data.Type == "Player" and not _G.ESPPlayer then shouldRemove = true end
+        if data.Type == "Chest" and not _G.ESPChest then shouldRemove = true end
+        if data.Type == "Fruit" and not _G.ESPFruit then shouldRemove = true end
+        
+        if shouldRemove or not part or not part.Parent or (part:IsA("HumanoidRootPart") and (not part.Parent:FindFirstChild("Humanoid") or part.Parent.Humanoid.Health <= 0)) then
+            if data.Gui then
+                data.Gui:Destroy()
             end
-        else
-            for _, v in pairs(Players:GetPlayers()) do
-                 if v.Character and v.Character:FindFirstChild("Head") and v.Character.Head:FindFirstChild("ESP") then
-                    v.Character.Head.ESP:Destroy()
-                 end
+            ESPTable[part] = nil
+        end
+    end
+
+    -- Add new ESPs
+    if _G.ESPPlayer then
+        for _, player in pairs(game.Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                CreateESP(player.Character.HumanoidRootPart, "Player", player.Name, Color3.new(1, 0, 0))
             end
         end
-        
-        if _G.ESPChest then
-            for _, v in pairs(Workspace:GetDescendants()) do
-                if v.Name:find("Chest") and v:IsA("Model") and v:FindFirstChild("Handle") then
-                    CreateESP(v.Handle, "Chest", Color3.new(1, 1, 0))
-                end
-            end
-        else
-            for _, v in pairs(Workspace:GetDescendants()) do
-                if v.Name:find("Chest") and v:IsA("Model") and v:FindFirstChild("Handle") and v.Handle:FindFirstChild("ESP") then
-                    v.Handle.ESP:Destroy()
-                end
-            end
-        end
-        
-        if _G.ESPFruit then
-            for _, v in pairs(Workspace:GetChildren()) do
-                if v.Name:find("Fruit") and v:IsA("Tool") and v:FindFirstChild("Handle") then
-                    CreateESP(v.Handle, v.Name, Color3.new(0, 1, 0))
-                end
-            end
-        else
-            for _, v in pairs(Workspace:GetChildren()) do
-                if v.Name:find("Fruit") and v:IsA("Tool") and v:FindFirstChild("Handle") and v.Handle:FindFirstChild("ESP") then
-                    v.Handle.ESP:Destroy()
+    end
+
+    if _G.ESPChest then
+        local searchFolders = {Workspace:FindFirstChild("Map"), Workspace}
+        for _, folder in pairs(searchFolders) do
+            if folder then
+                for _, v in pairs(folder:GetDescendants()) do
+                    if v.Name:find("Chest") and v:IsA("MeshPart") then
+                        CreateESP(v, "Chest", "Chest", Color3.new(1, 1, 0))
+                    end
                 end
             end
         end
     end
+    
+    if _G.ESPFruit then
+        for _, v in pairs(Workspace:GetDescendants()) do
+            if v:IsA("MeshPart") and table.find({"Bannana", "Apple", "Orange"}, v.Name) then
+                 CreateESP(v, "Fruit", v.Name, Color3.new(0, 1, 0))
+            end
+        end
+    end
+end
+
+-- ESP Loop
+task.spawn(function()
+    while task.wait(0.5) do
+        UpdateESP()
+    end
 end)
 
+local CachedEnemies = {}
+local LastEnemyUpdate = 0
+
+local toolTypes = {
+    ["Demon Fruit"] = "Blox Fruit",
+    ["Sword"] = "Sword",
+    ["Melee"] = "Melee"
+}
+
+local function EquipSelected()
+    local Character = LocalPlayer.Character
+    if not Character then return end
+    local Humanoid = Character:FindFirstChild("Humanoid")
+    if not Humanoid then return end
+
+    local WantedType = _G.SelectWeapon
+
+    local Current = Character:FindFirstChildOfClass("Tool")
+    if Current and Current.ToolTip == toolTypes[WantedType] then
+        return
+    end
+
+    if Current then
+        Humanoid:UnequipTools()
+        task.wait(0.1)
+    end
+
+    local priorityConfig = {
+        ["Demon Fruit"] = {"Dough-Dough", "Leopard-Leopard", "Dragon-Dragon"},
+        ["Sword"] = {"Saber", "Bisento", "Shisui"}
+    }
+
+    if priorityConfig[WantedType] then
+        for _, priorityName in ipairs(priorityConfig[WantedType]) do
+            for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
+                if tool:IsA("Tool") and tool.Name == priorityName then
+                    Humanoid:EquipTool(tool)
+                    return
+                end
+            end
+        end
+    end
+
+    for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and tool.ToolTip == toolTypes[WantedType] then
+            Humanoid:EquipTool(tool)
+            return
+        end
+    end
+end
 -- Main Loop
 task.spawn(function()
     -- Wait for Level Data to load
     repeat task.wait() until LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("Level") and LocalPlayer.Data.Level.Value > 0
     
     while task.wait() do
-        -- Define EquipSelected once per loop iteration to make it available for both farm modes
-        local function EquipSelected()
-             local Character = LocalPlayer.Character
-             if not Character then return end
-             local Humanoid = Character:FindFirstChild("Humanoid")
-             if not Humanoid then return end
-             
-             local WantedType = _G.SelectWeapon -- "Melee", "Sword", "Demon Fruit"
-             
-             -- Check if we are ALREADY holding the correct weapon
-             local Current = Character:FindFirstChildOfClass("Tool")
-             if Current then
-                 if (WantedType == "Demon Fruit" and Current.ToolTip == "Blox Fruit") or
-                    (WantedType == "Sword" and Current.ToolTip == "Sword") or
-                    (WantedType == "Melee" and Current.ToolTip == "Melee") then
-                     return -- All good, do nothing
-                 end
-                 -- Only unequip if we are holding the WRONG thing
-                 Humanoid:UnequipTools()
-                 task.wait(0.1) -- Small delay to prevent glitching
-             end
-             
-             -- Equip the correct one
-             for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
-                 if tool:IsA("Tool") then
-                     if (WantedType == "Demon Fruit" and tool.ToolTip == "Blox Fruit") or
-                        (WantedType == "Sword" and tool.ToolTip == "Sword") or
-                        (WantedType == "Melee" and tool.ToolTip == "Melee") then
-                         Humanoid:EquipTool(tool)
-                         break -- Stop after equipping one
-                     end
-                 end
-             end
-        end
+        
 
         if _G.AutoFarm then
-            pcall(function()
+            SafeCall(function()
                 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
                 local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
                 if not HumanoidRootPart then return end
@@ -342,93 +454,91 @@ task.spawn(function()
                 else
                     UpdateStatus("Getting Quest (Lv: " .. LocalPlayer.Data.Level.Value .. ")")
                     if QuestData then
-                        local NPC = FindNPC(QuestData[3])
+                        local questGiverName = QuestData[3]
+                        local questNameForCoord = QuestData[2]
+                        local questID = QuestData[6]
+                        
+                        local questGiverAreaCFrame = QuestGiverCoordinates[questNameForCoord]
+
+                        if questGiverAreaCFrame and (HumanoidRootPart.Position - questGiverAreaCFrame.Position).Magnitude > 100 then
+                            UpdateStatus("Teleporting to " .. questGiverName .. " area")
+                            TweenTo(questGiverAreaCFrame)
+                            task.wait(1)
+                        end
+
+                        local NPC = FindNPC(questGiverName)
                         if NPC and NPC:FindFirstChild("HumanoidRootPart") then
                             local dist = (HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude
-                            if dist > 10 then -- Increased range slightly
+                            if dist > 15 then
                                 TweenTo(NPC.HumanoidRootPart.CFrame)
                             else
-                                -- Request Specific Quest ID
-                                task.wait(0.5) -- Stability wait
-                                CommF:InvokeServer("StartQuest", QuestData[2], QuestData[6])
+                                task.wait(0.5)
+                                CommF:InvokeServer("StartQuest", QuestData[2], questID)
                                 CommF:InvokeServer("SetSpawnPoint")
                                 task.wait(1)
                             end
                         else
-                            UpdateStatus("NPC Not Found: " .. QuestData[3])
+                            UpdateStatus("NPC Not Found: " .. questGiverName)
                         end
                     end
                 end
 
                 if not TargetMobName then
-                     return 
+                    _G.FarmPos = nil
+                    return 
                 end
 
-                -- Find Closest Target
-                local Target = nil
-                local MinDist = math.huge
-                for _, v in pairs(Workspace.Enemies:GetChildren()) do
-                    if v.Name:find(TargetMobName) and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 and v:FindFirstChild("HumanoidRootPart") then
-                        local dist = (HumanoidRootPart.Position - v.HumanoidRootPart.Position).Magnitude
-                        if dist < MinDist then
-                            MinDist = dist
-                            Target = v
+                if tick() - LastEnemyUpdate > 0.5 then
+                    CachedEnemies = {}
+                    for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
+                        if enemy.Name:find(TargetMobName) and
+                           enemy:FindFirstChild("HumanoidRootPart") and
+                           enemy:FindFirstChild("Humanoid") and
+                           enemy.Humanoid.Health > 0 then
+                            table.insert(CachedEnemies, enemy)
                         end
                     end
+                    LastEnemyUpdate = tick()
                 end
-                    
+                
+                local Target = CachedEnemies[1]
+
                 if Target then
-                    -- 1. Equip Weapon (Strict & Optimized)
                     EquipSelected()
 
-                    -- 2. Position Player (Anchored Farm)
-                    -- Fix for "Flying Away": Do NOT follow the mob every frame.
-                    -- Lock position to the initial spot where we found the mob/spawn.
-                    
                     if not _G.FarmPos or (Target.HumanoidRootPart.Position - _G.FarmPos).Magnitude > 50 then
-                        -- Set new anchor point 20 studs above the target
                         _G.FarmPos = Target.HumanoidRootPart.Position + Vector3.new(0, 20, 0)
                     end
                     
                     local AttackPos = CFrame.new(_G.FarmPos)
                     local Distance = (HumanoidRootPart.Position - AttackPos.Position).Magnitude
-                    
                     if Distance > 250 then
-                         TweenTo(AttackPos)
-                         _G.FarmPos = nil -- Reset anchor if we had to tween far (likely moved to new zone)
+                        TweenTo(AttackPos)
+                        _G.FarmPos = nil
                     else
-                         HumanoidRootPart.CFrame = AttackPos
-                         HumanoidRootPart.Velocity = Vector3.new(0,0,0)
-                         if Character:FindFirstChild("Humanoid") then
-                             Character.Humanoid.PlatformStand = true
-                         end
+                        HumanoidRootPart.CFrame = AttackPos
                     end
                     
-                    -- 3. Bring Mobs (Magnet + Reach)
-                    -- Pulls all matching mobs to the ANCHORED player position
-                    for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
-                        if enemy.Name:find(TargetMobName) and enemy:FindFirstChild("HumanoidRootPart") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
+                    HumanoidRootPart.Velocity = Vector3.new(0,0,0)
+                    if Character:FindFirstChild("Humanoid") then
+                        Character.Humanoid.PlatformStand = true
+                    end
+                    
+                    for _, enemy in ipairs(CachedEnemies) do
+                        if enemy.Parent and enemy.Humanoid.Health > 0 then
                             local eDist = (enemy.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude
-                            if eDist < 300 then -- Only bring mobs in valid range
+                            if eDist < 300 then
                                 enemy.HumanoidRootPart.CanCollide = false
-                                enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0, -10, 0) -- Bring BELOW player
-                                enemy.HumanoidRootPart.Velocity = Vector3.new(0,0,0)
-                                enemy.Humanoid.WalkSpeed = 0
-                                enemy.Humanoid.JumpPower = 0
-                                
-                                if enemy.HumanoidRootPart.Size.Y < 50 then
-                                    enemy.HumanoidRootPart.Size = Vector3.new(50, 50, 50)
-                                    enemy.HumanoidRootPart.Transparency = 0.5
-                                end
+                                enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0, -10, 0)
+                                enemy.HumanoidRootPart.Velocity = Vector3.zero
+                                enemy.Humanoid:ChangeState(14)
                             end
                         end
                     end
                     
-                    -- 4. Auto Attack
                     game:GetService("VirtualUser"):CaptureController()
                     game:GetService("VirtualUser"):ClickButton1(Vector2.new(0, 0))
                     
-                    -- Auto Skills
                     if _G.AutoSkills then
                         pcall(function()
                             local skills = {"Z", "X", "C", "V"}
@@ -440,30 +550,26 @@ task.spawn(function()
                     end
                 else
                      UpdateStatus("Mob Not Found: " .. TargetMobName)
-                     -- Check for Spawns
-                     if _G.AutoFarm then
-                        -- Optional: Teleport to spawn area if known (omitted for now to keep simple)
+                     local respawn = WaitForMobRespawn(TargetMobName, 30)
+                     if respawn then
+                         CachedEnemies = {respawn}
+                     else
+                         _G.FarmPos = nil
                      end
                 end
-            end)
+            end, "Auto Farm Loop")
         elseif _G.AutoFarmBoss then
-            pcall(function()
+            SafeCall(function()
                 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
                 local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
                 if not HumanoidRootPart then return end
 
                 UpdateStatus("Farming Boss: " .. _G.SelectedBoss)
 
-                -- Find Boss
-                local Target = nil
-                for _, v in pairs(Workspace.Enemies:GetChildren()) do
-                    if v.Name:find(_G.SelectedBoss) and v:FindFirstChild("Humanoid") and v.Humanoid.Health > 0 then
-                        Target = v
-                        break
-                    end
-                end
+                -- Find Boss using the generic FindNPC function
+                local Target = FindNPC(_G.SelectedBoss)
 
-                if Target and Target:FindFirstChild("HumanoidRootPart") then
+                if Target and Target:FindFirstChild("Humanoid") and Target.Humanoid.Health > 0 and Target:FindFirstChild("HumanoidRootPart") then
                     -- Equip Weapon
                     EquipSelected() -- Re-use the same function
 
@@ -505,11 +611,12 @@ task.spawn(function()
                         end
                     end
                 end
-            end)
+            end, "Auto Farm Boss Loop")
         else
             if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
                  LocalPlayer.Character.Humanoid.PlatformStand = false
             end
+            UpdateStatus("Idle")
         end
     end
 end)
@@ -980,6 +1087,19 @@ spawn(function()
             pcall(function()
                 if not LocalPlayer.Character:FindFirstChild("HasBuso") then
                     CommF:InvokeServer("Buso")
+                end
+            end)
+        end
+    end
+end)
+
+spawn(function()
+    while task.wait(10) do
+        if _G.AutoHaki then
+            pcall(function()
+                local ObsLevel = LocalPlayer.Data:FindFirstChild("ObservationLevel")
+                if ObsLevel and ObsLevel.Value < (ObsLevel.MaxValue or math.huge) then
+                    CommF:InvokeServer("UpgradeObservation")
                 end
             end)
         end
