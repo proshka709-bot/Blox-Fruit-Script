@@ -1,1132 +1,602 @@
- -- [[ LARB SYSTEM v7.1.0 | CHANGELOG v22 ]]
- -- Mode: Code (Reliability & Performance)
- -- Feature: GetActiveQuestTarget() is now more robust with a fallback search.
- -- Feature: Added Anti-AFK mechanism.
- -- Feature: Implemented a Weapon Priority system for smarter weapon selection.
- -- Optimized: Mob Magnet now uses caching and a more efficient enemy state change.
- -- Stability: Implemented SafeCall error handling for main farm loops to prevent crashes.
+--[[
+    ⚽ RSS GK HUB — FIXED AUTO DIVE
+    Исправления:
+    • Auto Dive: pcall возвращал boolean вместо connections (главный баг)
+    • Auto Dive: кнопки теперь ищутся с повторными попытками
+    • Auto Dive: убрана слишком строгая проверка направления мяча
+    • Reach: корректный pcall для firetouchinterest
+]]
 
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-
-local Window = Rayfield:CreateWindow({
-   Name = "LARB HACK | Blox Fruits Ultimate",
-   LoadingTitle = "AA-7.1 Optimization",
-   LoadingSubtitle = "By LARB SYSTEM",
-   ConfigurationSaving = {
-      Enabled = true,
-      FolderName = "LarbHackConfig",
-      FileName = "BloxFruits"
-   },
-   KeySystem = false,
-})
-
-local MainTab = Window:CreateTab("Auto Farm", 4483362458)
-local StatsTab = Window:CreateTab("Auto Stats", 4483362458)
-local TeleportTab = Window:CreateTab("Teleport", 4483362458)
-local ShopTab = Window:CreateTab("Shop", 4483362458)
-local ESPTab = Window:CreateTab("ESP", 4483362458)
-local MiscTab = Window:CreateTab("Misc", 4483362458)
-
-local StatusLabel = MainTab:CreateLabel("Status: Idle")
-
--- Variables
-_G.AutoFarm = false
-_G.AutoQuest = true -- Default to true if AutoFarm is on
-_G.AutoChest = false
-_G.AutoStats = false
-_G.AutoHaki = true
-_G.AutoSkills = true
-_G.SelectStat = "Melee" 
-_G.ESPPlayer = false
-_G.ESPChest = false
-_G.ESPFruit = false
-_G.WalkSpeed = 16
-_G.JumpPower = 50
-_G.AutoBuyRandomFruit = false
-_G.AutoBuyFightingStyle = false
-_G.SelectFightingStyle = "Black Leg"
-_G.AutoBuyHakiColor = false
-_G.AutoBuyLegendarySword = false
-_G.AutoFarmBoss = false
-_G.SelectedBoss = "Gorilla King"
-
-_G.SelectWeapon = "Demon Fruit" -- Default to Fruit
-
--- Data Tables
-local QuestGiverCoordinates = {
-    ["BanditQuest1"] = CFrame.new(-1124, 17, 144),
-    ["BanditQuest2"] = CFrame.new(-1124, 17, 144),
-    ["MonkeyQuest"] = CFrame.new(-1534, 36, 1340),
-    ["PirateQuest"] = CFrame.new(114, 17, 4837),
-    ["DesertQuest"] = CFrame.new(1034, 1, -841),
-    ["ImpelDownQuest"] = CFrame.new(4183, -1, -5612),
-    ["ArenaQuest"] = CFrame.new(-670, 17, 4350),
-    ["MagmaQuest"] = CFrame.new(3800, 20, -5000),
-    ["FishmanQuest"] = CFrame.new(-1432, -250, 2800),
-    ["SkyExp1Quest"] = CFrame.new(-4839, 850, -2619),
-    ["SkyExp2Quest"] = CFrame.new(-4839, 2500, -2619),
-    ["FountainQuest"] = CFrame.new(-800, 150, 1500)
-}
-
-local QuestList = {
-    -- Format: {LevelReq, QuestName, QuestGiverName, MobName, MobLevel, QuestID}
-    {0, "BanditQuest1", "Bandit Quest Giver", "Bandit", 5, 1},
-    {10, "JungleQuest", "Monkey Quest Giver", "Monkey", 14, 1},
-    {15, "JungleQuest", "Monkey Quest Giver", "Gorilla", 20, 2},
-    {30, "BuggyQuest1", "Pirate Adventurer", "Pirate", 35, 1}, 
-    {40, "BuggyQuest1", "Pirate Adventurer", "Brute", 45, 2},
-    {60, "DesertQuest", "Desert Adventurer", "Desert Bandit", 60, 1},
-    {75, "DesertQuest", "Desert Adventurer", "Desert Officer", 70, 2},
-    {90, "SnowQuest", "Snow Quest Giver", "Snow Bandit", 90, 1},
-    {105, "SnowQuest", "Snow Quest Giver", "Snowman", 100, 2},
-    {120, "MarineQuest2", "Marine Quest Giver", "Chief Petty Officer", 120, 1},
-    {130, "SkyExp1Quest", "Sky Adventurer", "Sky Bandit", 150, 1},
-    {150, "SkyExp1Quest", "Sky Adventurer", "Dark Master", 175, 2},
-    {175, "ColosseumQuest", "Quest Giver", "Toga Warrior", 180, 1},
-    {190, "ColosseumQuest", "Quest Giver", "Gladiator", 200, 2},
-    -- Prison
-    {220, "PrisonerQuest", "Prisoner Quest Giver", "Warden", 220, 1},
-    {230, "PrisonerQuest", "Prisoner Quest Giver", "Chief Warden", 230, 2},
-    {240, "PrisonerQuest", "Prisoner Quest Giver", "Swan", 240, 3},
-    -- Magma Village
-    {300, "MagmaQuest", "Magma Quest Giver", "Military Soldier", 300, 1},
-    {325, "MagmaQuest", "Magma Quest Giver", "Military Spy", 325, 2},
-    {350, "MagmaQuest", "Magma Quest Giver", "Magma Admiral", 350, 3},
-    -- Underwater City
-    {375, "FishmanQuest", "Fishman Quest Giver", "Fishman Warrior", 375, 1},
-    {400, "FishmanQuest", "Fishman Quest Giver", "Fishman Commando", 400, 2},
-    -- Skylands Upper Yard
-    {450, "SkyExp2Quest", "Sky Adventurer", "God's Guard", 450, 1},
-    {475, "SkyExp2Quest", "Sky Adventurer", "Shanda", 475, 2},
-    {500, "SkyExp2Quest", "Sky Adventurer", "Wysper", 500, 3},
-    -- Fountain City
-    {625, "FountainQuest", "Fountain Quest Giver", "Galley Pirate", 625, 1},
-}
-
-local BossList = {
-    -- Format: {Name, Position}
-    {"Gorilla King", CFrame.new(-1858, 230, 1633)},
-    {"Yeti", CFrame.new(-3278, 168, -3200)},
-    {"Saber Expert", CFrame.new(-1432, 35, 2800)},
-    {"Thunder God", CFrame.new(-4839, 2500, -2619)},
-    {"Ice Admiral", CFrame.new(-3278, 168, -3200)},
-    {"Magma Admiral", CFrame.new(3800, 20, -5000)},
-    {"Fajita", CFrame.new(1000, 20, 5000)},
-}
-
--- Services
-local Players = game:GetService("Players")
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
-local VirtualUser = game:GetService("VirtualUser")
-local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
+local LocalPlayer       = Players.LocalPlayer
 
-local LocalPlayer = Players.LocalPlayer
-local CommF = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("CommF_")
+-- ============================================================
+-- СОСТОЯНИЕ
+-- ============================================================
 
--- Anti-AFK
-LocalPlayer.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-end)
+local HitboxSize     = Vector3.new(10, 10, 10)
+local IsReachEnabled = false
+local ReachConn      = nil
+local RSSHitbox      = nil
 
--- Helper Functions
-local ErrorLog = {}
+local DiveConn       = nil
+local DIVE_DIST      = 12
+local DIVE_COOLDOWN  = 0.65
+local lastDiveTime   = 0
 
-local function SafeCall(func, context)
-    local success, result = pcall(func)
-    if not success then
-        table.insert(ErrorLog, {
-            Time = os.date("%H:%M:%S"),
-            Context = context,
-            Error = tostring(result)
-        })
-        UpdateStatus("Error: " .. context)
-        warn("[LARB ERROR]", context, ":", result)
-    end
-    return success, result
+local AutoPickEnabled   = false
+local AutoPickInterval  = 0.35
+local AutoPickPriority  = "Home First"
+local AutoPickLoopTask  = nil
+local lastPickAttempt   = 0
+local PICK_COOLDOWN     = 0.35
+
+-- ============================================================
+-- ВСПОМОГАТЕЛЬНЫЕ
+-- ============================================================
+
+local function GetRoot()
+    return LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 end
 
-local function UpdateStatus(text)
-    StatusLabel:Set("Status: " .. text)
-end
-
-local function GetCurrentQuestData()
-    local myLevel = LocalPlayer.Data.Level.Value
-    local bestQuest = nil
-    
-    for _, q in ipairs(QuestList) do
-        if myLevel >= q[1] then
-            bestQuest = q
-        end
-    end
-    return bestQuest
-end
-
-local function CheckActiveQuest()
-    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if PlayerGui and PlayerGui:FindFirstChild("Main") and PlayerGui.Main:FindFirstChild("Quest") then
-        return PlayerGui.Main.Quest.Visible
-    end
-    return false
-end
-
-local function GetActiveQuestTarget()
-    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if not (PlayerGui and PlayerGui:FindFirstChild("Main") and
-            PlayerGui.Main:FindFirstChild("Quest") and
-            PlayerGui.Main.Quest.Visible) then
-        return nil
-    end
-
-    local Container = PlayerGui.Main.Quest:FindFirstChild("Container")
-    if not (Container and Container:FindFirstChild("QuestTitle") and
-            Container.QuestTitle:FindFirstChild("Title")) then
-        return nil
-    end
-
-    local text = Container.QuestTitle.Title.Text:lower() -- lowercase для сравнения
-
-    -- Более умный парсинг
-    for _, q in ipairs(QuestList) do
-        if text:find(q[4]:lower()) then
-            return q[4]
-        end
-    end
-
-    -- Fallback: проверяем все моби в Enemies
-    for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
-        if text:find(enemy.Name:lower()) then
-            return enemy.Name
-        end
-    end
-
-    return nil
-end
-
-local function WaitForMobRespawn(mobName, timeout)
-    local startTime = tick()
-    while tick() - startTime < (timeout or 30) do
-        for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
-            if enemy.Name:find(mobName) and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
-                return enemy
-            end
-        end
-        task.wait(1)
+local function FindBall()
+    for _, name in ipairs({"ball", "TPS", "PSoccerBall"}) do
+        local b = Workspace:FindFirstChild(name, true)
+        if b and b:IsA("BasePart") then return b end
     end
     return nil
 end
 
-local CurrentTween = nil
+local function isInFansTeam()
+    return LocalPlayer.Team == nil or LocalPlayer.Team.Name == "Fans"
+end
 
-local function TweenTo(targetCFrame)
-    local Character = LocalPlayer.Character
-    if not Character or not Character:FindFirstChild("HumanoidRootPart") then
-        return false
-    end
+local function GetTeamChangeRemote()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes then return nil end
+    return remotes:FindFirstChild("TeamChange")
+end
 
-    local Root = Character.HumanoidRootPart
-    local distance = (Root.Position - targetCFrame.Position).Magnitude
+local function TryJoinGK(option)
+    if not option or option == "" then return false end
+    if not isInFansTeam() then return true end
 
-    if CurrentTween then
-        CurrentTween:Cancel()
-        CurrentTween = nil
-    end
+    local remote = GetTeamChangeRemote()
+    if not remote then return false end
 
-    local speed = distance > 1000 and 300 or 150
-    local tweenInfo = TweenInfo.new(
-        distance / speed,
-        Enum.EasingStyle.Linear,
-        Enum.EasingDirection.Out
-    )
+    local color = option == "Home GK" and BrickColor.new(23) or BrickColor.new(141)
 
-    CurrentTween = TweenService:Create(Root, tweenInfo, { CFrame = targetCFrame })
-
-    local success = pcall(function()
-        _G.NoClip = true
-        CurrentTween:Play()
-        CurrentTween.Completed:Wait()
+    local ok = pcall(function()
+        remote:FireServer(color, "Goalie")
     end)
+    if not ok then return false end
 
-    _G.NoClip = false
-    CurrentTween = nil
-    return success
+    task.wait(0.2)
+    return not isInFansTeam()
 end
 
-RunService.Stepped:Connect(function()
-    if _G.NoClip and LocalPlayer.Character then
-        for _, v in pairs(LocalPlayer.Character:GetDescendants()) do
-            if v:IsA("BasePart") then
-                v.CanCollide = false
-            end
-        end
+local function StopAutoPickGK()
+    AutoPickEnabled = false
+    if AutoPickLoopTask then
+        task.cancel(AutoPickLoopTask)
+        AutoPickLoopTask = nil
     end
-end)
-
-local NPCCache = {}
-local LastCacheUpdate = 0
-
-local function FindNPC(name)
-    if tick() - LastCacheUpdate > 5 then
-        NPCCache = {}
-        if Workspace:FindFirstChild("NPCs") then
-            for _, v in pairs(Workspace.NPCs:GetChildren()) do
-                NPCCache[v.Name] = v
-            end
-        end
-        LastCacheUpdate = tick()
-    end
-
-    if NPCCache[name] and NPCCache[name].Parent then
-        return NPCCache[name]
-    end
-
-    for npcName, npc in pairs(NPCCache) do
-        if npcName:find(name) and npc.Parent then
-            return npc
-        end
-    end
-    
-    -- Fallback for bosses/mobs not in NPCs folder
-    for _, v in pairs(Workspace.Enemies:GetChildren()) do
-        if v.Name:find(name) then
-            return v
-        end
-    end
-
-    return nil
 end
 
-local ESPTable = {}
+local function StartAutoPickGK()
+    StopAutoPickGK()
+    AutoPickEnabled = true
 
-local function CreateESP(part, espType, name, color)
-    if not part or ESPTable[part] then return end
+    AutoPickLoopTask = task.spawn(function()
+        while AutoPickEnabled do
+            if not isInFansTeam() then
+                StopAutoPickGK()
+                break
+            end
 
-    local BillboardGui = Instance.new("BillboardGui")
-    BillboardGui.Name = "ESP"
-    BillboardGui.Adornee = part
-    BillboardGui.Size = UDim2.new(0, 100, 0, 50)
-    BillboardGui.AlwaysOnTop = true
-    BillboardGui.ResetOnSpawn = false
+            local now = tick()
+            if now - lastPickAttempt < PICK_COOLDOWN then
+                task.wait(0.05)
+                continue
+            end
+            lastPickAttempt = now
 
-    local TextLabel = Instance.new("TextLabel")
-    TextLabel.Parent = BillboardGui
-    TextLabel.BackgroundColor3 = Color3.new(0, 0, 0)
-    TextLabel.BackgroundTransparency = 0.5
-    TextLabel.Size = UDim2.new(1, 0, 1, 0)
-    TextLabel.TextColor3 = color or Color3.new(1, 1, 1)
-    TextLabel.TextScaled = true
-    TextLabel.Font = Enum.Font.SourceSansBold
-    TextLabel.Text = name
+            local first, second
+            if AutoPickPriority == "Away First" then
+                first, second = "Away GK", "Home GK"
+            else
+                first, second = "Home GK", "Away GK"
+            end
 
-    BillboardGui.Parent = part
-    ESPTable[part] = {Gui = BillboardGui, Type = espType}
+            if TryJoinGK(first) or TryJoinGK(second) then
+                StopAutoPickGK()
+                break
+            end
+
+            task.wait(math.max(0.05, AutoPickInterval))
+        end
+    end)
 end
 
-local function UpdateESP()
-    -- Clear old ESPs based on toggle status
-    for part, data in pairs(ESPTable) do
-        local shouldRemove = false
-        if data.Type == "Player" and not _G.ESPPlayer then shouldRemove = true end
-        if data.Type == "Chest" and not _G.ESPChest then shouldRemove = true end
-        if data.Type == "Fruit" and not _G.ESPFruit then shouldRemove = true end
-        
-        if shouldRemove or not part or not part.Parent or (part:IsA("HumanoidRootPart") and (not part.Parent:FindFirstChild("Humanoid") or part.Parent.Humanoid.Health <= 0)) then
-            if data.Gui then
-                data.Gui:Destroy()
-            end
-            ESPTable[part] = nil
-        end
-    end
+-- ============================================================
+-- HITBOX / REACH
+-- ============================================================
 
-    -- Add new ESPs
-    if _G.ESPPlayer then
-        for _, player in pairs(game.Players:GetPlayers()) do
-            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                CreateESP(player.Character.HumanoidRootPart, "Player", player.Name, Color3.new(1, 0, 0))
-            end
-        end
-    end
+local function CreateHitbox()
+    if RSSHitbox then RSSHitbox:Destroy() end
+    RSSHitbox = Instance.new("BoxHandleAdornment")
+    RSSHitbox.Name         = "RSSHitbox"
+    RSSHitbox.AlwaysOnTop  = false
+    RSSHitbox.ZIndex       = 10
+    RSSHitbox.Color3       = Color3.fromRGB(0, 255, 100)
+    RSSHitbox.Transparency = 1
+    RSSHitbox.Size         = HitboxSize
+    RSSHitbox.Adornee      = GetRoot()
+    RSSHitbox.Parent       = Workspace.Terrain
+end
 
-    if _G.ESPChest then
-        local searchFolders = {Workspace:FindFirstChild("Map"), Workspace}
-        for _, folder in pairs(searchFolders) do
-            if folder then
-                for _, v in pairs(folder:GetDescendants()) do
-                    if v.Name:find("Chest") then
-                        if v:IsA("MeshPart") or v:IsA("Part") then
-                            CreateESP(v, "Chest", "CHEST", Color3.fromRGB(255, 255, 0))
-                        elseif v:IsA("Model") and v:FindFirstChild("Handle") and v.Handle:IsA("BasePart") then
-                            CreateESP(v.Handle, "Chest", "CHEST", Color3.fromRGB(255, 255, 0))
-                        end
-                    end
-                end
-            end
-        end
-    end
-    
-    if _G.ESPFruit then
-        for _, v in pairs(Workspace:GetDescendants()) do
-            if v:IsA("MeshPart") and table.find({"Bannana", "Apple", "Orange"}, v.Name) then
-                 CreateESP(v, "Fruit", v.Name, Color3.new(0, 1, 0))
+local function UpdateHitbox(show)
+    if not RSSHitbox then return end
+    RSSHitbox.Size        = HitboxSize
+    RSSHitbox.Adornee     = GetRoot()
+    RSSHitbox.Transparency = (show and IsReachEnabled) and 0.4 or 1
+end
+
+local function ReachLoop()
+    local root = GetRoot()
+    if not root or not RSSHitbox then return end
+    RSSHitbox.Adornee = root
+
+    local ball = FindBall()
+    if not ball then return end
+
+    local reach = math.max(HitboxSize.X, HitboxSize.Y, HitboxSize.Z) / 2
+    if (ball.Position - root.Position).Magnitude <= reach then
+        for _, part in ipairs(LocalPlayer.Character:GetChildren()) do
+            if part:IsA("BasePart") then
+                pcall(firetouchinterest, part, ball, 0)
+                task.wait()
+                pcall(firetouchinterest, part, ball, 1)
             end
         end
     end
 end
 
--- ESP Loop
-task.spawn(function()
-    while task.wait(0.5) do
-        UpdateESP()
-    end
-end)
+local function EnableReach()
+    if ReachConn then return end
+    IsReachEnabled = true
+    if not RSSHitbox then CreateHitbox() end
+    ReachConn = RunService.Heartbeat:Connect(ReachLoop)
+end
 
-local CachedEnemies = {}
-local LastEnemyUpdate = 0
+local function DisableReach()
+    if ReachConn then ReachConn:Disconnect(); ReachConn = nil end
+    IsReachEnabled = false
+    UpdateHitbox(false)
+end
 
-local toolTypes = {
-    ["Demon Fruit"] = "Blox Fruit",
-    ["Sword"] = "Sword",
-    ["Melee"] = "Melee"
-}
+-- ============================================================
+-- AUTO DIVE — ИСПРАВЛЕННЫЙ
+-- ============================================================
 
-local function EquipSelected()
-    local Character = LocalPlayer.Character
-    if not Character then return end
-    local Humanoid = Character:FindFirstChild("Humanoid")
-    if not Humanoid then return end
+local function PredictBallPos(ball, dt)
+    local vel     = ball.AssemblyLinearVelocity
+    local pos     = ball.Position
+    local gravity = Vector3.new(0, -196.2, 0)
+    return pos + vel * dt + gravity * (dt * dt * 0.5)
+end
 
-    local WantedType = _G.SelectWeapon
+-- ИСПРАВЛЕНО: ищем кнопки по всем возможным путям
+local function GetDiveButtons()
+    -- Путь 1: стандартный мобильный GUI
+    local ok1, l1, r1 = pcall(function()
+        local gui   = LocalPlayer:FindFirstChild("PlayerGui")
+        local ctrl  = gui and gui:FindFirstChild("MobileCTRL")
+        local frame = ctrl and ctrl:FindFirstChild("TouchControlFrame")
+        local jump  = frame and frame:FindFirstChild("JumpButton")
+        if not jump then return nil, nil end
+        return jump:FindFirstChild("LeftDive"), jump:FindFirstChild("RightDive")
+    end)
+    if ok1 and l1 and r1 then return l1, r1 end
 
-    local Current = Character:FindFirstChildOfClass("Tool")
-    if Current and Current.ToolTip == toolTypes[WantedType] then
+    -- Путь 2: поиск по всему PlayerGui
+    local ok2, l2, r2 = pcall(function()
+        local gui = LocalPlayer:FindFirstChild("PlayerGui")
+        if not gui then return nil, nil end
+        local leftBtn, rightBtn
+        for _, obj in ipairs(gui:GetDescendants()) do
+            if obj.Name == "LeftDive"  then leftBtn  = obj end
+            if obj.Name == "RightDive" then rightBtn = obj end
+        end
+        return leftBtn, rightBtn
+    end)
+    if ok2 and l2 and r2 then return l2, r2 end
+
+    return nil, nil
+end
+
+-- ИСПРАВЛЕНО: pcall(getconnections) возвращает (ok, result) — нужно брать второй аргумент
+local function FireButton(btn)
+    if not btn then return end
+
+    -- Метод 1: getconnections (exploit)
+    local ok, conns = pcall(getconnections, btn.MouseButton1Click)
+    if ok and conns and #conns > 0 then
+        pcall(function() conns[1]:Fire() end)
         return
     end
 
-    if Current then
-        Humanoid:UnequipTools()
-        task.wait(0.1)
-    end
+    -- Метод 2: прямой Fire()
+    pcall(function() btn.MouseButton1Click:Fire() end)
+end
 
-    local priorityConfig = {
-        ["Demon Fruit"] = {"Dough-Dough", "Leopard-Leopard", "Dragon-Dragon"},
-        ["Sword"] = {"Saber", "Bisento", "Shisui"}
+local function StartAutoDive()
+    if DiveConn then DiveConn:Disconnect(); DiveConn = nil end
+
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local hrp  = char:WaitForChild("HumanoidRootPart")
+
+    local leftBtn  = nil
+    local rightBtn = nil
+
+    -- ИСПРАВЛЕНО: ищем кнопки асинхронно с повторными попытками
+    -- GUI загружается не сразу — ждём до 15 сек
+    task.spawn(function()
+        for attempt = 1, 15 do
+            leftBtn, rightBtn = GetDiveButtons()
+            if leftBtn and rightBtn then
+                print("✅ Кнопки дайва найдены с попытки #" .. attempt)
+                break
+            end
+            task.wait(1)
+        end
+
+        if not leftBtn or not rightBtn then
+            warn("❌ Кнопки дайва не найдены!")
+            warn("   Убедись что ты на мобиле и играешь как GK")
+        end
+    end)
+
+    DiveConn = RunService.Heartbeat:Connect(function()
+        if not leftBtn or not rightBtn then return end
+
+        local ball = FindBall()
+        if not ball then return end
+
+        local now  = tick()
+        if now - lastDiveTime < DIVE_COOLDOWN then return end
+
+        -- Проверяем дистанцию
+        local dist = (ball.Position - hrp.Position).Magnitude
+        if dist > DIVE_DIST then return end
+
+        -- ИСПРАВЛЕНО: убрана строгая проверка dot product
+        -- Только проверяем что мяч движется достаточно быстро
+        local vel = ball.AssemblyLinearVelocity
+        if vel.Magnitude < 4 then return end
+
+        -- Предсказываем куда полетит мяч через 0.3 сек
+        local predicted = PredictBallPos(ball, 0.3)
+        local localPred = hrp.CFrame:PointToObjectSpace(predicted)
+
+        lastDiveTime = now
+
+        -- Дайвим в нужную сторону
+        if localPred.X < 0 then
+            FireButton(leftBtn)
+            print("◀ Дайв влево")
+        else
+            FireButton(rightBtn)
+            print("▶ Дайв вправо")
+        end
+    end)
+
+    print("✅ Auto Dive ВКЛЮЧЁН | Радиус: " .. DIVE_DIST .. " | Ожидаем кнопки...")
+end
+
+local function StopAutoDive()
+    if DiveConn then DiveConn:Disconnect(); DiveConn = nil end
+    print("Auto Dive ОТКЛЮЧЁН")
+end
+
+-- ============================================================
+-- BALL PREDICTOR
+-- ============================================================
+
+local predConn    = nil
+local curveFolder = nil
+
+local function StartPredictor()
+    local cfg = {
+        gravity       = 196.2,
+        bounceDamping = 0.68,
+        groundHeight  = 0,
+        airResistance = 0.99,
+        friction      = 0.85,
+        segmentCount  = 20,
+        segmentTrans  = 0.25,
+        maxTime       = 8,
+        dt            = 0.04,
+        minSpeed      = 3,
+        updateEvery   = 3,
+        colorCurve    = Color3.fromRGB(0, 220, 255),
+        colorLand     = Color3.fromRGB(255, 220, 0),
     }
 
-    if priorityConfig[WantedType] then
-        for _, priorityName in ipairs(priorityConfig[WantedType]) do
-            for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
-                if tool:IsA("Tool") and tool.Name == priorityName then
-                    Humanoid:EquipTool(tool)
-                    return
-                end
-            end
-        end
+    if curveFolder then curveFolder:Destroy() end
+    curveFolder        = Instance.new("Folder")
+    curveFolder.Name   = "GK_Predictor"
+    curveFolder.Parent = Workspace
+
+    local segs = {}
+    for i = 1, cfg.segmentCount do
+        local s = Instance.new("Part")
+        s.Anchored    = true; s.CanCollide  = false; s.CastShadow = false
+        s.Material    = Enum.Material.Neon
+        s.Color       = cfg.colorCurve
+        s.Transparency = 1
+        s.Size        = Vector3.new(0.25, 0.25, 1)
+        s.Parent      = curveFolder
+        segs[i] = s
     end
 
-    for _, tool in pairs(LocalPlayer.Backpack:GetChildren()) do
-        if tool:IsA("Tool") and tool.ToolTip == toolTypes[WantedType] then
-            Humanoid:EquipTool(tool)
+    local marker = Instance.new("Part")
+    marker.Anchored    = true; marker.CanCollide = false; marker.CastShadow = false
+    marker.Material    = Enum.Material.Neon
+    marker.Color       = cfg.colorLand
+    marker.Transparency = 1
+    marker.Size        = Vector3.new(5, 0.15, 5)
+    marker.Shape       = Enum.PartType.Cylinder
+    marker.Parent      = curveFolder
+
+    local function Simulate(startPos, startVel)
+        local pts = {}
+        local pos = startPos
+        local vel = startVel
+        local gdt = Vector3.new(0, -cfg.gravity * cfg.dt, 0)
+        local bounces = 0
+        for _ = 1, math.floor(cfg.maxTime / cfg.dt) do
+            vel = (vel + gdt) * (cfg.airResistance)
+            pos = pos + vel * cfg.dt
+            table.insert(pts, pos)
+            if pos.Y <= cfg.groundHeight and vel.Y < 0 then
+                pos = Vector3.new(pos.X, cfg.groundHeight, pos.Z)
+                vel = Vector3.new(vel.X * cfg.friction, -vel.Y * cfg.bounceDamping, vel.Z * cfg.friction)
+                bounces += 1
+                if bounces >= 3 or vel.Magnitude < 2 then break end
+            end
+        end
+        return pts
+    end
+
+    local frame = 0
+    predConn = RunService.Heartbeat:Connect(function()
+        frame += 1
+        if frame % cfg.updateEvery ~= 0 then return end
+
+        local ball = FindBall()
+        if not ball or ball.AssemblyLinearVelocity.Magnitude < cfg.minSpeed then
+            for _, s in ipairs(segs) do s.Transparency = 1 end
+            marker.Transparency = 1
             return
         end
-    end
-end
--- Main Loop
-task.spawn(function()
-    -- Wait for Level Data to load
-    repeat task.wait() until LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("Level") and LocalPlayer.Data.Level.Value > 0
-    
-    while task.wait() do
-        
 
-        if _G.AutoFarm then
-            SafeCall(function()
-                local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-                if not HumanoidRootPart then return end
-                
-                local QuestData = GetCurrentQuestData()
-                local TargetMobName = nil
-                
-                if CheckActiveQuest() then
-                    TargetMobName = GetActiveQuestTarget()
-                    if not TargetMobName and QuestData then
-                         TargetMobName = QuestData[4]
-                    end
-                    UpdateStatus("Farming " .. (TargetMobName or "Unknown") .. " (Lv: " .. LocalPlayer.Data.Level.Value .. ")")
-                else
-                    UpdateStatus("Getting Quest (Lv: " .. LocalPlayer.Data.Level.Value .. ")")
-                    if QuestData then
-                        local questGiverName = QuestData[3]
-                        local questNameForCoord = QuestData[2]
-                        local questID = QuestData[6]
-                        
-                        local questGiverAreaCFrame = QuestGiverCoordinates[questNameForCoord]
+        local pts = Simulate(ball.Position, ball.AssemblyLinearVelocity)
+        local n   = #pts
+        if n < 2 then return end
 
-                        if questGiverAreaCFrame and (HumanoidRootPart.Position - questGiverAreaCFrame.Position).Magnitude > 100 then
-                            UpdateStatus("Teleporting to " .. questGiverName .. " area")
-                            TweenTo(questGiverAreaCFrame)
-                            task.wait(1)
-                        end
+        local step = (n - 1) / cfg.segmentCount
+        for i = 1, cfg.segmentCount do
+            local idx  = math.floor((i - 1) * step) + 1
+            local idx2 = math.min(idx + 1, n)
+            local p1, p2 = pts[idx], pts[idx2]
+            local dist = (p2 - p1).Magnitude
+            if dist > 0.01 then
+                segs[i].Size        = Vector3.new(0.25, 0.25, dist)
+                segs[i].CFrame      = CFrame.lookAt((p1 + p2) * 0.5, p2)
+                segs[i].Transparency = cfg.segmentTrans
+            else
+                segs[i].Transparency = 1
+            end
+        end
 
-                        local NPC = FindNPC(questGiverName)
-                        if NPC and NPC:FindFirstChild("HumanoidRootPart") then
-                            local dist = (HumanoidRootPart.Position - NPC.HumanoidRootPart.Position).Magnitude
-                            if dist > 15 then
-                                TweenTo(NPC.HumanoidRootPart.CFrame)
-                            else
-                                task.wait(0.5)
-                                CommF:InvokeServer("StartQuest", QuestData[2], questID)
-                                CommF:InvokeServer("SetSpawnPoint")
-                                task.wait(1)
-                            end
-                        else
-                            UpdateStatus("NPC Not Found: " .. questGiverName)
-                        end
-                    end
-                end
+        local landPos = nil
+        for i = 2, n do
+            if pts[i].Y <= cfg.groundHeight + 0.3 and pts[i-1].Y > cfg.groundHeight + 0.3 then
+                local t = math.clamp((cfg.groundHeight - pts[i-1].Y) / (pts[i].Y - pts[i-1].Y), 0, 1)
+                landPos = pts[i-1]:Lerp(pts[i], t)
+                break
+            end
+        end
 
-                if not TargetMobName then
-                    _G.FarmPos = nil
-                    return 
-                end
-
-                if tick() - LastEnemyUpdate > 0.5 then
-                    CachedEnemies = {}
-                    for _, enemy in pairs(Workspace.Enemies:GetChildren()) do
-                        if enemy.Name:find(TargetMobName) and
-                           enemy:FindFirstChild("HumanoidRootPart") and
-                           enemy:FindFirstChild("Humanoid") and
-                           enemy.Humanoid.Health > 0 then
-                            table.insert(CachedEnemies, enemy)
-                        end
-                    end
-                    LastEnemyUpdate = tick()
-                end
-                
-                local Target = CachedEnemies[1]
-
-                if Target then
-                    EquipSelected()
-
-                    if not _G.FarmPos or (Target.HumanoidRootPart.Position - _G.FarmPos).Magnitude > 50 then
-                        _G.FarmPos = Target.HumanoidRootPart.Position + Vector3.new(0, 20, 0)
-                    end
-                    
-                    local AttackPos = CFrame.new(_G.FarmPos)
-                    local Distance = (HumanoidRootPart.Position - AttackPos.Position).Magnitude
-                    if Distance > 250 then
-                        TweenTo(AttackPos)
-                        _G.FarmPos = nil
-                    else
-                        HumanoidRootPart.CFrame = AttackPos
-                    end
-                    
-                    HumanoidRootPart.Velocity = Vector3.new(0,0,0)
-                    if Character:FindFirstChild("Humanoid") then
-                        Character.Humanoid.PlatformStand = true
-                    end
-                    
-                    for _, enemy in ipairs(CachedEnemies) do
-                        if enemy.Parent and enemy.Humanoid.Health > 0 then
-                            local eDist = (enemy.HumanoidRootPart.Position - HumanoidRootPart.Position).Magnitude
-                            if eDist < 300 then
-                                enemy.HumanoidRootPart.CanCollide = false
-                                enemy.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0, -10, 0)
-                                enemy.HumanoidRootPart.Velocity = Vector3.zero
-                                enemy.Humanoid:ChangeState(14)
-                            end
-                        end
-                    end
-                    
-                    game:GetService("VirtualUser"):CaptureController()
-                    game:GetService("VirtualUser"):ClickButton1(Vector2.new(0, 0))
-                    
-                    if _G.AutoSkills then
-                        pcall(function()
-                            local skills = {"Z", "X", "C", "V"}
-                            for _, key in ipairs(skills) do
-                                game:GetService("VirtualInputManager"):SendKeyEvent(true, key, false, game)
-                                game:GetService("VirtualInputManager"):SendKeyEvent(false, key, false, game)
-                            end
-                        end)
-                    end
-                else
-                     UpdateStatus("Mob Not Found: " .. TargetMobName)
-                     local respawn = WaitForMobRespawn(TargetMobName, 30)
-                     if respawn then
-                         CachedEnemies = {respawn}
-                     else
-                         _G.FarmPos = nil
-                     end
-                end
-            end, "Auto Farm Loop")
-        elseif _G.AutoFarmBoss then
-            SafeCall(function()
-                local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-                if not HumanoidRootPart then return end
-
-                UpdateStatus("Farming Boss: " .. _G.SelectedBoss)
-
-                -- Find Boss using the generic FindNPC function
-                local Target = FindNPC(_G.SelectedBoss)
-
-                if Target and Target:FindFirstChild("Humanoid") and Target.Humanoid.Health > 0 and Target:FindFirstChild("HumanoidRootPart") then
-                    -- Equip Weapon
-                    EquipSelected() -- Re-use the same function
-
-                    -- Position and Attack
-                    local AttackPos = Target.HumanoidRootPart.CFrame * CFrame.new(0, 15, 0)
-                    HumanoidRootPart.CFrame = AttackPos
-                    HumanoidRootPart.Velocity = Vector3.new(0,0,0)
-                    if Character:FindFirstChild("Humanoid") then
-                        Character.Humanoid.PlatformStand = true
-                    end
-                    
-                    -- Bring Boss (if needed, less aggressive)
-                    Target.HumanoidRootPart.CFrame = HumanoidRootPart.CFrame * CFrame.new(0, -10, 0)
-
-                    -- Auto Attack
-                    game:GetService("VirtualUser"):CaptureController()
-                    game:GetService("VirtualUser"):ClickButton1(Vector2.new(0, 0))
-                    
-                    -- Auto Skills
-                    if _G.AutoSkills then
-                        pcall(function()
-                            local skills = {"Z", "X", "C", "V"}
-                            for _, key in ipairs(skills) do
-                                game:GetService("VirtualInputManager"):SendKeyEvent(true, key, false, game)
-                                game:GetService("VirtualInputManager"):SendKeyEvent(false, key, false, game)
-                            end
-                        end)
-                    end
-                else
-                    UpdateStatus("Boss not found. Waiting...")
-                    -- Teleport to spawn location if boss is not found
-                    for _, bossData in ipairs(BossList) do
-                        if bossData[1] == _G.SelectedBoss then
-                            local dist = (HumanoidRootPart.Position - bossData[2].Position).Magnitude
-                            if dist > 50 then
-                                TweenTo(bossData[2])
-                            end
-                            break
-                        end
-                    end
-                end
-            end, "Auto Farm Boss Loop")
+        if landPos then
+            local pulse = 5 + math.sin(tick() * 4) * 1.5
+            marker.Size        = Vector3.new(pulse, 0.15, pulse)
+            marker.CFrame      = CFrame.new(landPos + Vector3.new(0, 0.1, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+            marker.Transparency = 0.35
         else
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-                 LocalPlayer.Character.Humanoid.PlatformStand = false
-            end
-            UpdateStatus("Idle")
+            marker.Transparency = 1
         end
-    end
-end)
+    end)
+end
 
--- Stats Loop
-spawn(function()
-    while task.wait(0.5) do
-        if _G.AutoStats then
-            pcall(function()
-                if LocalPlayer.Data.Points.Value > 0 then
-                    local StatMap = {
-                        ["Melee"] = "Melee",
-                        ["Defense"] = "Defense",
-                        ["Sword"] = "Sword",
-                        ["Gun"] = "Gun",
-                        ["Demon Fruit"] = "Demon Fruit" 
-                    }
-                    CommF:InvokeServer("AddPoint", StatMap[_G.SelectStat], 1)
-                end
-            end)
+local function StopPredictor()
+    if predConn    then predConn:Disconnect(); predConn = nil end
+    if curveFolder then curveFolder:Destroy(); curveFolder = nil end
+end
+
+-- ============================================================
+-- WindUI
+-- ============================================================
+
+local WindUI = loadstring(game:HttpGet(
+    "https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/dist/main.lua"
+))()
+
+local Window = WindUI:CreateWindow({
+    Title  = "RSS — GK Hub",
+    Icon   = "shield",
+    Author = "Fixed Auto Dive",
+    Folder = "RSS_GK",
+})
+
+-- ============================================================
+-- ВКЛАДКА: REACH
+-- ============================================================
+
+local ReachTab = Window:Tab({ Title = "Reach & Hitbox", Icon = "maximize" })
+local ReachSection = ReachTab:Section({ Title = "Хитбокс вратаря" })
+
+ReachSection:Toggle({
+    Title = "Enable Reach", Desc = "Расширяет зону касания мяча",
+    Default = false,
+    Callback = function(v) if v then EnableReach() else DisableReach() end end
+})
+
+ReachSection:Toggle({
+    Title = "Show Hitbox", Default = false,
+    Callback = function(v) UpdateHitbox(v) end
+})
+
+ReachTab:Space()
+local SizeSection = ReachTab:Section({ Title = "Размер хитбокса" })
+
+SizeSection:Slider({
+    Title = "Size X", Step = 1, Value = { Min = 1, Max = 60, Default = 10 },
+    Callback = function(v) HitboxSize = Vector3.new(v, HitboxSize.Y, HitboxSize.Z); UpdateHitbox(IsReachEnabled) end
+})
+SizeSection:Slider({
+    Title = "Size Y", Step = 1, Value = { Min = 1, Max = 60, Default = 10 },
+    Callback = function(v) HitboxSize = Vector3.new(HitboxSize.X, v, HitboxSize.Z); UpdateHitbox(IsReachEnabled) end
+})
+SizeSection:Slider({
+    Title = "Size Z", Step = 1, Value = { Min = 1, Max = 60, Default = 10 },
+    Callback = function(v) HitboxSize = Vector3.new(HitboxSize.X, HitboxSize.Y, v); UpdateHitbox(IsReachEnabled) end
+})
+
+-- ============================================================
+-- ВКЛАДКА: GK FEATURES
+-- ============================================================
+
+local GkTab = Window:Tab({ Title = "GK Features", Icon = "shield-check" })
+local PickSection = GkTab:Section({ Title = "Выбор позиции" })
+
+PickSection:Dropdown({
+    Title = "Встать вратарём", Desc = "Используй когда нет вратаря в команде",
+    Values = { "Home GK", "Away GK" }, Value = nil, Multi = false, AllowNone = true,
+    Callback = function(option)
+        if not option or option == "" then return end
+        if not isInFansTeam() then
+            WindUI:Notify({ Title = "Ошибка", Icon = "ban", Content = "Сначала выйди из команды!", Duration = 4 })
+            return
         end
-    end
-end)
-
--- UI Setup
-MainTab:CreateToggle({
-   Name = "Enable Auto Farm",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.AutoFarm = Value
-      if Value then
-          _G.AutoFarmBoss = false -- Disable boss farm
-          Rayfield:Notify({
-              Title = "Normal Farm Activated",
-              Content = "Boss auto farm is disabled.",
-              Duration = 5,
-          })
-      end
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Auto Skills (Z,X,C,V)",
-   CurrentValue = true,
-   Callback = function(Value)
-      _G.AutoSkills = Value
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Auto Buso Haki",
-   CurrentValue = true,
-   Callback = function(Value)
-      _G.AutoHaki = Value
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Auto Accept Quest",
-   CurrentValue = true,
-   Callback = function(Value)
-      _G.AutoQuest = Value
-   end,
-})
-
-MainTab:CreateDropdown({
-   Name = "Select Weapon Type",
-   Options = {"Melee", "Sword", "Demon Fruit"},
-   CurrentOption = "Demon Fruit",
-   Callback = function(Option)
-      _G.SelectWeapon = Option
-   end,
-})
-
-MainTab:CreateToggle({
-   Name = "Enable Auto Farm Boss",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.AutoFarmBoss = Value
-      if Value then
-          _G.AutoFarm = false -- Disable normal farm
-          Rayfield:Notify({
-              Title = "Boss Farm Activated",
-              Content = "Normal auto farm is disabled.",
-              Duration = 5,
-          })
-      end
-   end,
-})
-
-MainTab:CreateDropdown({
-   Name = "Select Boss",
-   Options = (function()
-       local bosses = {}
-       for _, boss in ipairs(BossList) do
-           table.insert(bosses, boss[1])
-       end
-       return bosses
-   end)(),
-   CurrentValue = "Gorilla King",
-   Callback = function(Value)
-      _G.SelectedBoss = Value
-   end,
-})
-
-MainTab:CreateLabel("Script will auto-detect level and quest")
-
-StatsTab:CreateDropdown({
-   Name = "Select Stat to Upgrade",
-   Options = {"Melee", "Defense", "Sword", "Gun", "Demon Fruit"},
-   CurrentOption = "Melee",
-   Callback = function(Option)
-      _G.SelectStat = Option
-   end,
-})
-
-StatsTab:CreateToggle({
-   Name = "Auto Stats",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.AutoStats = Value
-   end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Jungle",
-    Callback = function()
-        TweenTo(CFrame.new(-1432, 29, 2800)) -- Jungle Coords
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Pirate Village",
-    Callback = function()
-        TweenTo(CFrame.new(-1182, 4, 3832)) 
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Desert",
-    Callback = function()
-        TweenTo(CFrame.new(909, 6, 4376)) 
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Frozen Village",
-    Callback = function()
-        TweenTo(CFrame.new(1156, 4, -1149)) 
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Marine Fortress",
-    Callback = function()
-        TweenTo(CFrame.new(-4923, 20, 4220)) 
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Skylands",
-    Callback = function()
-        TweenTo(CFrame.new(-4839, 717, -2619)) 
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Prison",
-    Callback = function()
-        TweenTo(CFrame.new(4842, 5, 745)) 
-    end,
-})
-
-TeleportTab:CreateButton({
-    Name = "Colosseum",
-    Callback = function()
-        TweenTo(CFrame.new(-1658, 6, -2976)) 
-    end,
-})
-
--- Shop Tab
-ShopTab:CreateToggle({
-   Name = "Auto Buy Random Fruit",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.AutoBuyRandomFruit = Value
-   end,
-})
-
-ShopTab:CreateDropdown({
-   Name = "Select Fighting Style",
-   Options = {"Black Leg", "Electro", "Fishman Karate", "Dragon Breath"},
-   CurrentOption = "Black Leg",
-   Callback = function(Option)
-      _G.SelectFightingStyle = Option
-   end,
-})
-
-ShopTab:CreateToggle({
-   Name = "Auto Buy Fighting Style",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.AutoBuyFightingStyle = Value
-   end,
-})
-
-ShopTab:CreateToggle({
-   Name = "Auto Buy Haki Color",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.AutoBuyHakiColor = Value
-   end,
-})
-
-ShopTab:CreateToggle({
-   Name = "Auto Buy Legendary Sword",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.AutoBuyLegendarySword = Value
-   end,
-})
-
-ShopTab:CreateToggle({
-   Name = "Devil Fruit Sniper",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.FruitSniper = Value
-   end,
-})
-
--- Shop Loop
-spawn(function()
-    while task.wait(1) do
+        local color = option == "Home GK" and BrickColor.new(23) or BrickColor.new(141)
         pcall(function()
-            if _G.AutoBuyRandomFruit then
-                CommF:InvokeServer("Cousin", "Buy")
-            end
-            
-            if _G.AutoBuyFightingStyle then
-                local StyleMap = {
-                    ["Black Leg"] = "BuyBlackLeg",
-                    ["Electro"] = "BuyElectro",
-                    ["Fishman Karate"] = "BuyFishmanKarate",
-                    ["Dragon Breath"] = "BuyDragonBreath"
-                }
-                CommF:InvokeServer(StyleMap[_G.SelectFightingStyle])
-            end
-            
-            if _G.AutoBuyHakiColor then
-                 -- Arguments for Haki Color Vendor might vary, simplistic attempt
-                 CommF:InvokeServer("ActivateHakiColor") 
-            end
-            
-            if _G.AutoBuyLegendarySword then
-                -- Attempt to buy common legendary swords if vendor is open
-                CommF:InvokeServer("BuySaber")
-                CommF:InvokeServer("BuyBisento")
-            end
-
-            if _G.FruitSniper then
-                CommF:InvokeServer("Cousin", "Buy")
-            end
+            ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("TeamChange"):FireServer(color, "Goalie")
         end)
+        WindUI:Notify({ Title = "✅ Готово", Icon = "check", Content = "Позиция: " .. option, Duration = 3 })
     end
-end)
-
-ESPTab:CreateToggle({
-   Name = "ESP Players",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.ESPPlayer = Value
-   end,
 })
 
-ESPTab:CreateToggle({
-   Name = "ESP Chests",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.ESPChest = Value
-   end,
+PickSection:Dropdown({
+    Title = "Auto Pick Priority",
+    Values = { "Home First", "Away First" }, Value = "Home First", Multi = false, AllowNone = false,
+    Callback = function(v)
+        if not v or v == "" then return end
+        AutoPickPriority = v
+    end
 })
 
-ESPTab:CreateToggle({
-   Name = "ESP Dropped Fruits",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.ESPFruit = Value
-   end,
+PickSection:Slider({
+    Title = "Auto Pick Interval (sec)",
+    Step = 0.05, Value = { Min = 0.10, Max = 2, Default = 0.35 },
+    Callback = function(v) AutoPickInterval = v end
 })
 
-MiscTab:CreateButton({
-    Name = "Redeem All Codes",
-    Callback = function()
-        local codes = {
-            "Sub2Fer999", "Enyu_is_Pro", "Magicbus", "JCWK", "Starcodeheo", "Bluxxy", "fudd10_v2",
-            "Fudd10", "BIGNEWS", "THEGREATACE", "SUB2GAMERROBOT_EXP1", "Sub2NoobMaster123",
-            "Sub2UncleKizaru", "Sub2Daigrock", "Axiore", "TantaiGaming", "StrawHatMaine"
-        }
-        for _, code in ipairs(codes) do
-            CommF:InvokeServer("RedeemCode", code)
-            task.wait(0.5)
-        end
-    end,
-})
-
-MiscTab:CreateButton({
-    Name = "Server Hop",
-    Callback = function()
-        local PlaceID = game.PlaceId
-        local AllIDs = {}
-        local found = false
-        local JustStarted = true
-        local ToSearch = game.HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. PlaceID .. "/servers/Public?sortOrder=Asc&limit=100"))
-        for i, v in pairs(ToSearch.data) do
-            if v.playing < v.maxPlayers then
-                table.insert(AllIDs, v.id)
+PickSection:Toggle({
+    Title = "Auto Pick GK",
+    Desc = "Пока ты в Fans: быстро пытается занять свободного GK (Home/Away) по приоритету",
+    Default = false,
+    Callback = function(v)
+        if v then
+            if not isInFansTeam() then
+                WindUI:Notify({ Title = "Ошибка", Icon = "ban", Content = "Сначала выйди из команды!", Duration = 4 })
+                return
             end
+            StartAutoPickGK()
+        else
+            StopAutoPickGK()
         end
-        local num = 0
-        local function Teleport()
-            if #AllIDs > 0 then
-                game:GetService("TeleportService"):TeleportToPlaceInstance(PlaceID, AllIDs[math.random(1, #AllIDs)], LocalPlayer)
-            end
-        end
-        Teleport()
-    end,
+    end
 })
 
-MiscTab:CreateSlider({
-    Name = "WalkSpeed",
-    Range = {16, 300},
-    Increment = 1,
-    Suffix = "Speed",
-    CurrentValue = 16,
-    Flag = "WalkSpeed", 
-    Callback = function(Value)
-        _G.WalkSpeed = Value
-        LocalPlayer.Character.Humanoid.WalkSpeed = Value
-    end,
+GkTab:Space()
+local DiveSection = GkTab:Section({ Title = "Auto Dive (Исправлен)" })
+
+DiveSection:Slider({
+    Title = "Радиус дайва (studs)", Desc = "На какой дистанции прыгать",
+    Step = 0.5, Value = { Min = 5, Max = 25, Default = 12 },
+    Callback = function(v) DIVE_DIST = v end
 })
 
-MiscTab:CreateSlider({
-    Name = "JumpPower",
-    Range = {50, 300},
-    Increment = 1,
-    Suffix = "Jump",
-    CurrentValue = 50,
-    Flag = "JumpPower", 
-    Callback = function(Value)
-        _G.JumpPower = Value
-        LocalPlayer.Character.Humanoid.JumpPower = Value
-    end,
+DiveSection:Slider({
+    Title = "Задержка между дайвами (сек)",
+    Step = 0.05, Value = { Min = 0.3, Max = 2, Default = 0.65 },
+    Callback = function(v) DIVE_COOLDOWN = v end
 })
 
-_G.InfJump = false
-_G.Fullbright = false
-
-MiscTab:CreateToggle({
-   Name = "Infinite Jump",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.InfJump = Value
-   end,
+DiveSection:Toggle({
+    Title = "Auto Dive",
+    Desc  = "Умный дайв с предсказанием. Смотри консоль для статуса кнопок.",
+    Default = false,
+    Callback = function(v)
+        if v then StartAutoDive() else StopAutoDive() end
+    end
 })
 
-MiscTab:CreateToggle({
-   Name = "Fullbright",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.Fullbright = Value
-      if not Value then
-          game:GetService("Lighting").Brightness = 1
-          game:GetService("Lighting").ClockTime = 12
-          game:GetService("Lighting").FogEnd = 10000
-          game:GetService("Lighting").GlobalShadows = true
-      end
-   end,
+-- ============================================================
+-- ВКЛАДКА: BALL PREDICTOR
+-- ============================================================
+
+local PredTab = Window:Tab({ Title = "Ball Predictor", Icon = "activity" })
+local PredSection = PredTab:Section({ Title = "Предсказание траектории" })
+
+PredSection:Toggle({
+    Title = "Enable Predictor", Desc = "Показывает куда полетит мяч",
+    Default = false,
+    Callback = function(v) if v then StartPredictor() else StopPredictor() end end
 })
 
-game:GetService("UserInputService").JumpRequest:Connect(function()
-    if _G.InfJump then
-        LocalPlayer.Character:FindFirstChildOfClass('Humanoid'):ChangeState("Jumping")
+-- ============================================================
+-- ИНИЦИАЛИЗАЦИЯ
+-- ============================================================
+
+CreateHitbox()
+UpdateHitbox(false)
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(1.5)
+    CreateHitbox()
+    UpdateHitbox(IsReachEnabled)
+    if DiveConn then
+        StopAutoDive()
+        task.wait(0.5)
+        StartAutoDive()
+    end
+    if AutoPickEnabled then
+        StopAutoPickGK()
+        task.wait(0.2)
+        StartAutoPickGK()
     end
 end)
 
-spawn(function()
-    while task.wait(1) do
-        if _G.Fullbright then
-            game:GetService("Lighting").Brightness = 2
-            game:GetService("Lighting").ClockTime = 14
-            game:GetService("Lighting").FogEnd = 100000
-            game:GetService("Lighting").GlobalShadows = false
-        end
-    end
-end)
-
--- WalkSpeed Loop (To prevent override)
-spawn(function()
-    while task.wait(0.5) do
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            if LocalPlayer.Character.Humanoid.WalkSpeed ~= _G.WalkSpeed then
-                 LocalPlayer.Character.Humanoid.WalkSpeed = _G.WalkSpeed
-            end
-            if LocalPlayer.Character.Humanoid.JumpPower ~= _G.JumpPower then
-                 LocalPlayer.Character.Humanoid.JumpPower = _G.JumpPower
-            end
-        end
-    end
-end)
-
-MiscTab:CreateToggle({
-   Name = "Auto Chests",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.AutoChest = Value
-   end,
+WindUI:Notify({
+    Title = "✅ RSS GK Hub", Icon = "shield",
+    Content = "Загружен! Auto Dive исправлен.", Duration = 4,
 })
 
-MiscTab:CreateToggle({
-   Name = "Bring Fruit",
-   CurrentValue = false,
-   Callback = function(Value)
-      _G.BringFruit = Value
-   end,
-})
-
--- Auto Chest Loop
-spawn(function()
-    while task.wait(1) do
-        if _G.AutoChest then
-            pcall(function()
-                local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                local Root = Character:FindFirstChild("HumanoidRootPart")
-                if not Root then return end
-                local searchFolders = {Workspace:FindFirstChild("Map"), Workspace}
-                local chestTargets = {}
-                for _, folder in pairs(searchFolders) do
-                    if folder then
-                        for _, v in pairs(folder:GetDescendants()) do
-                            if v.Name:find("Chest") then
-                                if v:IsA("Model") and v:FindFirstChild("Handle") and v.Handle:IsA("BasePart") and v.Handle.Transparency == 0 then
-                                    table.insert(chestTargets, v.Handle)
-                                elseif (v:IsA("MeshPart") or v:IsA("Part")) and v.Transparency == 0 then
-                                    table.insert(chestTargets, v)
-                                end
-                            end
-                        end
-                    end
-                end
-                for _, chest in ipairs(chestTargets) do
-                    if not _G.AutoChest then break end
-                    if chest and chest.Parent then
-                        local targetCF = chest.CFrame
-                        local dist = (Root.Position - targetCF.Position).Magnitude
-                        if dist > 250 then
-                            TweenTo(targetCF)
-                        else
-                            Root.CFrame = targetCF
-                        end
-                        task.wait(0.5)
-                    end
-                end
-            end)
-        end
-    end
-end)
-
--- Bring Fruit Loop
-spawn(function()
-    while task.wait(1) do
-        if _G.BringFruit then
-             pcall(function()
-                local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-                for _, v in pairs(Workspace:GetChildren()) do
-                    if v:IsA("Tool") and v.Name:find("Fruit") and v:FindFirstChild("Handle") and (v.Handle.Position - Character.HumanoidRootPart.Position).Magnitude < 5000 then
-                         TweenTo(v.Handle.CFrame)
-                         wait(1)
-                    end
-                end
-             end)
-        end
-    end
-end)
-
--- Auto Haki Loop
-spawn(function()
-    while task.wait(5) do
-        if _G.AutoHaki then
-            pcall(function()
-                if not LocalPlayer.Character:FindFirstChild("HasBuso") then
-                    CommF:InvokeServer("Buso")
-                end
-            end)
-        end
-    end
-end)
-
-spawn(function()
-    while task.wait(10) do
-        if _G.AutoHaki then
-            pcall(function()
-                local ObsLevel = LocalPlayer.Data:FindFirstChild("ObservationLevel")
-                if ObsLevel and ObsLevel.Value < (ObsLevel.MaxValue or math.huge) then
-                    CommF:InvokeServer("UpgradeObservation")
-                end
-            end)
-        end
-    end
-end)
+print("⚽ RSS GK Hub (Fixed) загружен!")
+print("💡 Включи Auto Dive и смотри консоль — там будет статус поиска кнопок")
