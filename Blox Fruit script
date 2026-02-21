@@ -60,14 +60,108 @@ local function GetTeamChangeRemote()
     return remotes:FindFirstChild("TeamChange")
 end
 
+local function ReadStringValue(obj)
+    if not obj then return nil end
+    if typeof(obj) == "string" then return obj end
+    if typeof(obj) == "Instance" and obj:IsA("StringValue") then
+        return obj.Value
+    end
+    return nil
+end
+
+local function GetPlayerRoleString(plr)
+    if not plr then return nil end
+
+    local keys = {
+        "Position",
+        "Role",
+        "POS",
+        "Pos",
+        "Class",
+    }
+
+    for _, k in ipairs(keys) do
+        local attr = plr:GetAttribute(k)
+        if typeof(attr) == "string" and attr ~= "" then return attr end
+    end
+
+    local ls = plr:FindFirstChild("leaderstats")
+    if ls then
+        for _, k in ipairs(keys) do
+            local v = ReadStringValue(ls:FindFirstChild(k))
+            if v and v ~= "" then return v end
+        end
+    end
+
+    for _, k in ipairs(keys) do
+        local v = ReadStringValue(plr:FindFirstChild(k))
+        if v and v ~= "" then return v end
+    end
+
+    local char = plr.Character
+    if char then
+        for _, k in ipairs(keys) do
+            local v = ReadStringValue(char:FindFirstChild(k))
+            if v and v ~= "" then return v end
+        end
+    end
+
+    return nil
+end
+
+local function IsGoalkeeperRole(role)
+    if not role or role == "" then return false end
+    role = string.lower(role)
+    return role == "goalie" or role == "gk" or role == "goalkeeper" or role:find("goalie", 1, true) ~= nil
+end
+
+local function IsPlayerGoalkeeper(plr)
+    return IsGoalkeeperRole(GetPlayerRoleString(plr))
+end
+
+local function GetTeamBrickColor(option)
+    return option == "Home GK" and BrickColor.new(23) or BrickColor.new(141)
+end
+
+local function IsGKSlotFree(option)
+    local targetColor = GetTeamBrickColor(option)
+    local anyRoleInfo = false
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.TeamColor == targetColor then
+            local role = GetPlayerRoleString(plr)
+            if role and role ~= "" then
+                anyRoleInfo = true
+                if IsGoalkeeperRole(role) then
+                    return false, true
+                end
+            end
+        end
+    end
+
+    return true, anyRoleInfo
+end
+
+local function IsLocalPlayerGoalkeeper()
+    return IsPlayerGoalkeeper(LocalPlayer)
+end
+
 local function TryJoinGK(option)
     if not option or option == "" then return false end
     if not isInFansTeam() then return true end
 
+    local free, hasInfo = IsGKSlotFree(option)
+    if not hasInfo then
+        return false
+    end
+    if not free then
+        return false
+    end
+
     local remote = GetTeamChangeRemote()
     if not remote then return false end
 
-    local color = option == "Home GK" and BrickColor.new(23) or BrickColor.new(141)
+    local color = GetTeamBrickColor(option)
 
     local ok = pcall(function()
         remote:FireServer(color, "Goalie")
@@ -75,7 +169,7 @@ local function TryJoinGK(option)
     if not ok then return false end
 
     task.wait(0.2)
-    return not isInFansTeam()
+    return (not isInFansTeam()) and IsLocalPlayerGoalkeeper()
 end
 
 local function StopAutoPickGK()
