@@ -1,10 +1,11 @@
 --[[
-    ⚽ RSS GK HUB — 7v7 УЛУЧШЕН
-    • Auto Dive: лучшее предсказание на большом поле (7v7)
-    • Auto Dive: учитывает высоту мяча, прыжок вверх
-    • Auto Dive: более агрессивный дайв при быстром мяче
-    • Reach: улучшен ReachLoop — двойной touch
-    • Ball Predictor: учёт 7v7 поля
+    ⚽ RSS GK HUB — FULL FEATURES
+    Оригинал +
+    • Auto Position    — GK двигается за мячом по X
+    • Auto Save Angle  — предпозиция по траектории мяча
+    • GK Stats         — счётчик сейвов / голов / %
+    • Auto Jump        — прыжок если мяч летит высоко
+    • Smart Dive       — учитывает позицию бьющего
 ]]
 
 local Players           = game:GetService("Players")
@@ -14,7 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer       = Players.LocalPlayer
 
 -- ============================================================
--- СОСТОЯНИЕ
+-- СОСТОЯНИЕ — ОРИГИНАЛЬНОЕ
 -- ============================================================
 
 local HitboxSize     = Vector3.new(10, 10, 10)
@@ -22,20 +23,42 @@ local IsReachEnabled = false
 local ReachConn      = nil
 local RSSHitbox      = nil
 
-local DiveConn       = nil
-local DIVE_DIST      = 16     -- увеличен для 7v7
-local DIVE_COOLDOWN  = 0.55   -- чуть быстрее для 7v7
-local lastDiveTime   = 0
+local DiveConn      = nil
+local DIVE_DIST     = 16
+local DIVE_COOLDOWN = 0.55
+local lastDiveTime  = 0
 
-local AutoPickEnabled   = false
-local AutoPickInterval  = 0.35
-local AutoPickPriority  = "Home First"
-local AutoPickLoopTask  = nil
-local lastPickAttempt   = 0
-local PICK_COOLDOWN     = 0.35
+local AutoPickEnabled  = false
+local AutoPickInterval = 0.35
+local AutoPickPriority = "Home First"
+local AutoPickLoopTask = nil
+local lastPickAttempt  = 0
+local PICK_COOLDOWN    = 0.35
 
 -- ============================================================
--- ВСПОМОГАТЕЛЬНЫЕ
+-- СОСТОЯНИЕ — НОВОЕ
+-- ============================================================
+
+local AutoPositionEnabled  = false
+local AutoPositionConn     = nil
+local GOAL_HALF_WIDTH      = 10
+local POSITION_LERP        = 0.12
+local GoalLineZ            = nil
+
+local AutoSaveAngleEnabled = false
+local AutoSaveAngleConn    = nil
+local ANGLE_LERP           = 0.1
+
+local AutoJumpEnabled    = false
+local JUMP_HEIGHT_THRESH = 4.5
+
+local TotalSaves       = 0
+local TotalGoals       = 0
+local StatsGui         = nil
+local GOAL_BEHIND_DIST = 3
+
+-- ============================================================
+-- ВСПОМОГАТЕЛЬНЫЕ — ОРИГИНАЛЬНЫЕ
 -- ============================================================
 
 local function GetRoot()
@@ -63,9 +86,7 @@ end
 local function ReadStringValue(obj)
     if not obj then return nil end
     if typeof(obj) == "string" then return obj end
-    if typeof(obj) == "Instance" and obj:IsA("StringValue") then
-        return obj.Value
-    end
+    if typeof(obj) == "Instance" and obj:IsA("StringValue") then return obj.Value end
     return nil
 end
 
@@ -146,10 +167,7 @@ end
 
 local function StopAutoPickGK()
     AutoPickEnabled = false
-    if AutoPickLoopTask then
-        task.cancel(AutoPickLoopTask)
-        AutoPickLoopTask = nil
-    end
+    if AutoPickLoopTask then task.cancel(AutoPickLoopTask); AutoPickLoopTask = nil end
 end
 
 local function StartAutoPickGK()
@@ -192,8 +210,8 @@ end
 
 local function UpdateHitbox(show)
     if not RSSHitbox then return end
-    RSSHitbox.Size        = HitboxSize
-    RSSHitbox.Adornee     = GetRoot()
+    RSSHitbox.Size         = HitboxSize
+    RSSHitbox.Adornee      = GetRoot()
     RSSHitbox.Transparency = (show and IsReachEnabled) and 0.4 or 1
 end
 
@@ -201,15 +219,12 @@ local function ReachLoop()
     local root = GetRoot()
     if not root or not RSSHitbox then return end
     RSSHitbox.Adornee = root
-
     local ball = FindBall()
     if not ball then return end
-
     local reach = math.max(HitboxSize.X, HitboxSize.Y, HitboxSize.Z) / 2
     if (ball.Position - root.Position).Magnitude <= reach then
         for _, part in ipairs(LocalPlayer.Character:GetChildren()) do
             if part:IsA("BasePart") then
-                -- УЛУЧШЕНО: двойной touch + дополнительный цикл для 7v7
                 pcall(firetouchinterest, part, ball, 0)
                 pcall(firetouchinterest, part, ball, 1)
                 pcall(firetouchinterest, part, ball, 0)
@@ -232,15 +247,177 @@ local function DisableReach()
 end
 
 -- ============================================================
--- AUTO DIVE — УЛУЧШЕН ДЛЯ 7v7
+-- GK STATS GUI — НОВОЕ
 -- ============================================================
 
--- УЛУЧШЕНО: предсказание дальше (0.5 сек вместо 0.3) для 7v7
+local function UpdateStatsGui()
+    if not StatsGui then return end
+    local frame = StatsGui:FindFirstChild("StatsFrame")
+    if not frame then return end
+    local sl = frame:FindFirstChild("SavesLabel")
+    local gl = frame:FindFirstChild("GoalsLabel")
+    local pl = frame:FindFirstChild("PctLabel")
+    if sl then sl.Text = "✅  Сейвы: " .. TotalSaves end
+    if gl then gl.Text = "❌  Голы: " .. TotalGoals end
+    if pl then
+        local total = TotalSaves + TotalGoals
+        pl.Text = "💯  " .. (total > 0 and (math.floor(TotalSaves / total * 100) .. "%") or "—")
+    end
+end
+
+local function CreateStatsGui()
+    pcall(function()
+        local old = LocalPlayer.PlayerGui:FindFirstChild("GKStatsGui")
+        if old then old:Destroy() end
+    end)
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "GKStatsGui"; sg.ResetOnSpawn = false
+    sg.IgnoreGuiInset = true; sg.Parent = LocalPlayer.PlayerGui
+
+    local frame = Instance.new("Frame")
+    frame.Name = "StatsFrame"
+    frame.Size = UDim2.new(0, 180, 0, 88)
+    frame.Position = UDim2.new(1, -190, 0, 10)
+    frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    frame.BackgroundTransparency = 0.25
+    frame.BorderSizePixel = 0; frame.Parent = sg
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 10); corner.Parent = frame
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(0, 200, 80)
+    stroke.Thickness = 1.5; stroke.Parent = frame
+
+    local function makeLabel(name, text, color, posY)
+        local lbl = Instance.new("TextLabel")
+        lbl.Name = name
+        lbl.Size = UDim2.new(1, -10, 0, 20)
+        lbl.Position = UDim2.new(0, 8, 0, posY)
+        lbl.BackgroundTransparency = 1
+        lbl.TextColor3 = color
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+        lbl.Text = text; lbl.TextSize = 13
+        lbl.Font = Enum.Font.Gotham; lbl.Parent = frame
+    end
+
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 26); title.Position = UDim2.new(0, 0, 0, 2)
+    title.BackgroundTransparency = 1; title.TextColor3 = Color3.fromRGB(255,255,255)
+    title.Text = "⚽  GK Stats"; title.TextSize = 14
+    title.Font = Enum.Font.GothamBold; title.Parent = frame
+
+    makeLabel("SavesLabel", "✅  Сейвы: 0",   Color3.fromRGB(0, 255, 100), 28)
+    makeLabel("GoalsLabel", "❌  Голы: 0",     Color3.fromRGB(255, 80, 80), 48)
+    makeLabel("PctLabel",   "💯  —",           Color3.fromRGB(255, 210, 0), 66)
+
+    StatsGui = sg
+    UpdateStatsGui()
+end
+
+local function CountSave()
+    TotalSaves += 1; UpdateStatsGui()
+    print("✅ Сейв! Всего: " .. TotalSaves)
+end
+
+local function CountGoal()
+    TotalGoals += 1; UpdateStatsGui()
+    print("❌ Гол! Всего: " .. TotalGoals)
+end
+
+local function ResetStats()
+    TotalSaves = 0; TotalGoals = 0; UpdateStatsGui()
+end
+
+-- ============================================================
+-- AUTO POSITION — НОВОЕ
+-- ============================================================
+
+local function StartAutoPosition()
+    if AutoPositionConn then AutoPositionConn:Disconnect(); AutoPositionConn = nil end
+    local root = GetRoot()
+    if not root then return end
+    GoalLineZ = root.Position.Z
+    AutoPositionEnabled = true
+
+    AutoPositionConn = RunService.Heartbeat:Connect(function()
+        if not AutoPositionEnabled then return end
+        local r    = GetRoot()
+        local ball = FindBall()
+        if not r or not ball then return end
+        local targetX = math.clamp(ball.Position.X * 0.35, -GOAL_HALF_WIDTH, GOAL_HALF_WIDTH)
+        local cur     = r.Position
+        local newX    = cur.X + (targetX - cur.X) * POSITION_LERP
+        local _, ry, _ = r.CFrame:ToEulerAnglesYXZ()
+        r.CFrame = CFrame.new(newX, cur.Y, GoalLineZ) * CFrame.Angles(0, ry, 0)
+    end)
+end
+
+local function StopAutoPosition()
+    AutoPositionEnabled = false
+    if AutoPositionConn then AutoPositionConn:Disconnect(); AutoPositionConn = nil end
+end
+
+-- ============================================================
+-- AUTO SAVE ANGLE — НОВОЕ
+-- ============================================================
+
+local function StartAutoSaveAngle()
+    if AutoSaveAngleConn then AutoSaveAngleConn:Disconnect(); AutoSaveAngleConn = nil end
+    AutoSaveAngleEnabled = true
+
+    AutoSaveAngleConn = RunService.Heartbeat:Connect(function()
+        if not AutoSaveAngleEnabled then return end
+        local r    = GetRoot()
+        local ball = FindBall()
+        if not r or not ball then return end
+        local vel = ball.AssemblyLinearVelocity
+        if vel.Magnitude < 6 then return end
+        local dz = r.Position.Z - ball.Position.Z
+        if math.abs(vel.Z) < 0.5 then return end
+        local comingToUs = (dz > 0 and vel.Z > 0) or (dz < 0 and vel.Z < 0)
+        if not comingToUs then return end
+        local timeToGoal = dz / vel.Z
+        if timeToGoal < 0 or timeToGoal > 2.5 then return end
+        local predictedX = math.clamp(ball.Position.X + vel.X * timeToGoal, -GOAL_HALF_WIDTH, GOAL_HALF_WIDTH)
+        local cur  = r.Position
+        local newX = cur.X + (predictedX - cur.X) * ANGLE_LERP
+        local _, ry, _ = r.CFrame:ToEulerAnglesYXZ()
+        r.CFrame = CFrame.new(newX, cur.Y, cur.Z) * CFrame.Angles(0, ry, 0)
+    end)
+end
+
+local function StopAutoSaveAngle()
+    AutoSaveAngleEnabled = false
+    if AutoSaveAngleConn then AutoSaveAngleConn:Disconnect(); AutoSaveAngleConn = nil end
+end
+
+-- ============================================================
+-- AUTO DIVE + AUTO JUMP + SMART DIRECTION
+-- ============================================================
+
 local function PredictBallPos(ball, dt)
     local vel     = ball.AssemblyLinearVelocity
     local pos     = ball.Position
     local gravity = Vector3.new(0, -196.2, 0)
     return pos + vel * dt + gravity * (dt * dt * 0.5)
+end
+
+-- НОВОЕ: ближайший к мячу игрок (бьющий)
+local function GetNearestShooterPos()
+    local ball = FindBall()
+    if not ball then return nil end
+    local nearest, nearestDist = nil, 12
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            local pr = plr.Character:FindFirstChild("HumanoidRootPart")
+            if pr then
+                local d = (pr.Position - ball.Position).Magnitude
+                if d < nearestDist then nearestDist = d; nearest = pr.Position end
+            end
+        end
+    end
+    return nearest
 end
 
 local function GetDiveButtons()
@@ -265,8 +442,19 @@ local function GetDiveButtons()
         return leftBtn, rightBtn
     end)
     if ok2 and l2 and r2 then return l2, r2 end
-
     return nil, nil
+end
+
+local function GetJumpButton()
+    local ok, btn = pcall(function()
+        local gui = LocalPlayer:FindFirstChild("PlayerGui")
+        if not gui then return nil end
+        for _, obj in ipairs(gui:GetDescendants()) do
+            if obj.Name == "JumpButton" and obj:IsA("ImageButton") then return obj end
+        end
+        return nil
+    end)
+    return ok and btn or nil
 end
 
 local function FireButton(btn)
@@ -279,68 +467,117 @@ local function FireButton(btn)
     pcall(function() btn.MouseButton1Click:Fire() end)
 end
 
+local function TriggerJump(jumpBtn)
+    if jumpBtn then FireButton(jumpBtn) end
+    pcall(function()
+        local char = LocalPlayer.Character
+        local hum  = char and char:FindFirstChildOfClass("Humanoid")
+        if hum then hum.Jump = true end
+    end)
+end
+
 local function StartAutoDive()
     if DiveConn then DiveConn:Disconnect(); DiveConn = nil end
-
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local hrp  = char:WaitForChild("HumanoidRootPart")
 
-    local leftBtn  = nil
-    local rightBtn = nil
+    local leftBtn, rightBtn, jumpBtn = nil, nil, nil
 
     task.spawn(function()
         for attempt = 1, 15 do
             leftBtn, rightBtn = GetDiveButtons()
+            jumpBtn = GetJumpButton()
             if leftBtn and rightBtn then
                 print("✅ Кнопки дайва найдены с попытки #" .. attempt)
                 break
             end
             task.wait(1)
         end
-        if not leftBtn or not rightBtn then
-            warn("❌ Кнопки дайва не найдены!")
-        end
+        if not leftBtn or not rightBtn then warn("❌ Кнопки дайва не найдены!") end
     end)
+
+    local prevVelZ   = 0
+    local diveFired  = false
+    local diveFireTick = 0
 
     DiveConn = RunService.Heartbeat:Connect(function()
         if not leftBtn or not rightBtn then return end
-
         local ball = FindBall()
-        if not ball then return end
+        if not ball then prevVelZ = 0; return end
 
-        local now = tick()
-        if now - lastDiveTime < DIVE_COOLDOWN then return end
-
+        local now  = tick()
+        local vel  = ball.AssemblyLinearVelocity
         local dist = (ball.Position - hrp.Position).Magnitude
+
+        -- АВТО-СЕЙВ: смена направления Z после дайва
+        if diveFired and (now - diveFireTick) < 1.0 then
+            if prevVelZ ~= 0 and vel.Z ~= 0 and ((prevVelZ > 0) ~= (vel.Z > 0)) then
+                CountSave(); diveFired = false
+            end
+        elseif diveFired and (now - diveFireTick) >= 1.0 then
+            diveFired = false
+        end
+
+        -- АВТО-ГОЛ: мяч прошёл за линию ворот
+        local r = GetRoot()
+        if r and GoalLineZ then
+            local behind     = r.Position.Z - GoalLineZ
+            local ballBehind = ball.Position.Z - GoalLineZ
+            local goalCrossed = (behind > 0 and ballBehind > GOAL_BEHIND_DIST)
+                             or (behind < 0 and ballBehind < -GOAL_BEHIND_DIST)
+            if goalCrossed and vel.Magnitude > 5 and (now - lastDiveTime) > 3 then
+                CountGoal(); lastDiveTime = now
+            end
+        end
+
+        prevVelZ = vel.Z
+
+        if now - lastDiveTime < DIVE_COOLDOWN then return end
         if dist > DIVE_DIST then return end
+        if vel.Magnitude < 3 then return end
 
-        local vel = ball.AssemblyLinearVelocity
-        if vel.Magnitude < 3 then return end -- УЛУЧШЕНО: ниже порог для 7v7 (было 4)
+        local ballHeight = ball.Position.Y - hrp.Position.Y
 
-        -- УЛУЧШЕНО: предсказание на 0.5 сек для 7v7 (мяч летит быстро)
+        -- AUTO JUMP: мяч летит высоко
+        if AutoJumpEnabled and ballHeight > JUMP_HEIGHT_THRESH then
+            local predHigh = PredictBallPos(ball, 0.25)
+            if (predHigh - hrp.Position).Magnitude < DIVE_DIST then
+                lastDiveTime = now
+                TriggerJump(jumpBtn)
+                print("⬆ Прыжок! H=" .. math.floor(ballHeight))
+                return
+            end
+        end
+
+        if ballHeight > 6 then return end
+
+        -- SMART DIVE: предсказание + бьющий (60/40)
         local predictTime = math.clamp(dist / math.max(vel.Magnitude, 1), 0.1, 0.6)
         local predicted   = PredictBallPos(ball, predictTime)
-        local localPred   = hrp.CFrame:PointToObjectSpace(predicted)
+        local shooterPos  = GetNearestShooterPos()
+        local finalX
 
-        -- УЛУЧШЕНО: проверка высоты — не дайвить если мяч высоко
-        local ballHeight = ball.Position.Y - hrp.Position.Y
-        if ballHeight > 6 then return end -- мяч слишком высоко, не дайвить
-
-        lastDiveTime = now
-
-        -- УЛУЧШЕНО: учёт горизонтального смещения для 7v7
-        local sideThreshold = 0.8 -- чуть чувствительнее
-        if localPred.X < -sideThreshold then
-            FireButton(leftBtn)
-            print("◀ Дайв влево | dist=" .. math.floor(dist) .. " vel=" .. math.floor(vel.Magnitude))
-        elseif localPred.X > sideThreshold then
-            FireButton(rightBtn)
-            print("▶ Дайв вправо | dist=" .. math.floor(dist) .. " vel=" .. math.floor(vel.Magnitude))
+        if shooterPos then
+            local sLocal = hrp.CFrame:PointToObjectSpace(shooterPos)
+            local bLocal = hrp.CFrame:PointToObjectSpace(predicted)
+            finalX = bLocal.X * 0.6 + sLocal.X * 0.4
+        else
+            finalX = hrp.CFrame:PointToObjectSpace(predicted).X
         end
-        -- если мяч по центру — не дайвить (УЛУЧШЕНО: в 7v7 центральный удар ловим руками)
+
+        local threshold = 0.8
+        if finalX < -threshold then
+            lastDiveTime = now; diveFired = true; diveFireTick = now
+            FireButton(leftBtn)
+            print("◀ Влево | Smart | d=" .. math.floor(dist) .. " v=" .. math.floor(vel.Magnitude))
+        elseif finalX > threshold then
+            lastDiveTime = now; diveFired = true; diveFireTick = now
+            FireButton(rightBtn)
+            print("▶ Вправо | Smart | d=" .. math.floor(dist) .. " v=" .. math.floor(vel.Magnitude))
+        end
     end)
 
-    print("✅ Auto Dive 7v7 ВКЛЮЧЁН | Радиус: " .. DIVE_DIST)
+    print("✅ Auto Dive (Full) ВКЛЮЧЁН | Радиус: " .. DIVE_DIST)
 end
 
 local function StopAutoDive()
@@ -357,55 +594,37 @@ local curveFolder = nil
 
 local function StartPredictor()
     local cfg = {
-        gravity       = 196.2,
-        bounceDamping = 0.68,
-        groundHeight  = 0,
-        airResistance = 0.99,
-        friction      = 0.85,
-        segmentCount  = 20,
-        segmentTrans  = 0.25,
-        maxTime       = 8,
-        dt            = 0.04,
-        minSpeed      = 3,
-        updateEvery   = 3,
-        colorCurve    = Color3.fromRGB(0, 220, 255),
-        colorLand     = Color3.fromRGB(255, 220, 0),
+        gravity = 196.2, bounceDamping = 0.68, groundHeight = 0,
+        airResistance = 0.99, friction = 0.85, segmentCount = 20,
+        segmentTrans = 0.25, maxTime = 8, dt = 0.04, minSpeed = 3,
+        updateEvery = 3, colorCurve = Color3.fromRGB(0, 220, 255),
+        colorLand = Color3.fromRGB(255, 220, 0),
     }
-
     if curveFolder then curveFolder:Destroy() end
-    curveFolder        = Instance.new("Folder")
-    curveFolder.Name   = "GK_Predictor"
-    curveFolder.Parent = Workspace
+    curveFolder = Instance.new("Folder")
+    curveFolder.Name = "GK_Predictor"; curveFolder.Parent = Workspace
 
     local segs = {}
     for i = 1, cfg.segmentCount do
         local s = Instance.new("Part")
-        s.Anchored    = true; s.CanCollide  = false; s.CastShadow = false
-        s.Material    = Enum.Material.Neon
-        s.Color       = cfg.colorCurve
-        s.Transparency = 1
-        s.Size        = Vector3.new(0.25, 0.25, 1)
-        s.Parent      = curveFolder
-        segs[i] = s
+        s.Anchored = true; s.CanCollide = false; s.CastShadow = false
+        s.Material = Enum.Material.Neon; s.Color = cfg.colorCurve
+        s.Transparency = 1; s.Size = Vector3.new(0.25, 0.25, 1)
+        s.Parent = curveFolder; segs[i] = s
     end
 
     local marker = Instance.new("Part")
-    marker.Anchored    = true; marker.CanCollide = false; marker.CastShadow = false
-    marker.Material    = Enum.Material.Neon
-    marker.Color       = cfg.colorLand
-    marker.Transparency = 1
-    marker.Size        = Vector3.new(5, 0.15, 5)
-    marker.Shape       = Enum.PartType.Cylinder
-    marker.Parent      = curveFolder
+    marker.Anchored = true; marker.CanCollide = false; marker.CastShadow = false
+    marker.Material = Enum.Material.Neon; marker.Color = cfg.colorLand
+    marker.Transparency = 1; marker.Size = Vector3.new(5, 0.15, 5)
+    marker.Shape = Enum.PartType.Cylinder; marker.Parent = curveFolder
 
     local function Simulate(startPos, startVel)
-        local pts = {}
-        local pos = startPos
-        local vel = startVel
+        local pts, pos, vel = {}, startPos, startVel
         local gdt = Vector3.new(0, -cfg.gravity * cfg.dt, 0)
         local bounces = 0
         for _ = 1, math.floor(cfg.maxTime / cfg.dt) do
-            vel = (vel + gdt) * (cfg.airResistance)
+            vel = (vel + gdt) * cfg.airResistance
             pos = pos + vel * cfg.dt
             table.insert(pts, pos)
             if pos.Y <= cfg.groundHeight and vel.Y < 0 then
@@ -422,50 +641,39 @@ local function StartPredictor()
     predConn = RunService.Heartbeat:Connect(function()
         frame += 1
         if frame % cfg.updateEvery ~= 0 then return end
-
         local ball = FindBall()
         if not ball or ball.AssemblyLinearVelocity.Magnitude < cfg.minSpeed then
             for _, s in ipairs(segs) do s.Transparency = 1 end
-            marker.Transparency = 1
-            return
+            marker.Transparency = 1; return
         end
-
         local pts = Simulate(ball.Position, ball.AssemblyLinearVelocity)
         local n   = #pts
         if n < 2 then return end
-
         local step = (n - 1) / cfg.segmentCount
         for i = 1, cfg.segmentCount do
             local idx  = math.floor((i - 1) * step) + 1
             local idx2 = math.min(idx + 1, n)
             local p1, p2 = pts[idx], pts[idx2]
-            local dist = (p2 - p1).Magnitude
-            if dist > 0.01 then
-                segs[i].Size        = Vector3.new(0.25, 0.25, dist)
-                segs[i].CFrame      = CFrame.lookAt((p1 + p2) * 0.5, p2)
+            local d = (p2 - p1).Magnitude
+            if d > 0.01 then
+                segs[i].Size = Vector3.new(0.25, 0.25, d)
+                segs[i].CFrame = CFrame.lookAt((p1 + p2) * 0.5, p2)
                 segs[i].Transparency = cfg.segmentTrans
-            else
-                segs[i].Transparency = 1
-            end
+            else segs[i].Transparency = 1 end
         end
-
         local landPos = nil
         for i = 2, n do
             if pts[i].Y <= cfg.groundHeight + 0.3 and pts[i-1].Y > cfg.groundHeight + 0.3 then
                 local t = math.clamp((cfg.groundHeight - pts[i-1].Y) / (pts[i].Y - pts[i-1].Y), 0, 1)
-                landPos = pts[i-1]:Lerp(pts[i], t)
-                break
+                landPos = pts[i-1]:Lerp(pts[i], t); break
             end
         end
-
         if landPos then
             local pulse = 5 + math.sin(tick() * 4) * 1.5
-            marker.Size        = Vector3.new(pulse, 0.15, pulse)
-            marker.CFrame      = CFrame.new(landPos + Vector3.new(0, 0.1, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+            marker.Size = Vector3.new(pulse, 0.15, pulse)
+            marker.CFrame = CFrame.new(landPos + Vector3.new(0, 0.1, 0)) * CFrame.Angles(0, 0, math.pi / 2)
             marker.Transparency = 0.35
-        else
-            marker.Transparency = 1
-        end
+        else marker.Transparency = 1 end
     end)
 end
 
@@ -483,17 +691,15 @@ local WindUI = loadstring(game:HttpGet(
 ))()
 
 local Window = WindUI:CreateWindow({
-    Title  = "RSS — GK Hub",
-    Icon   = "shield",
-    Author = "7v7 Improved",
-    Folder = "RSS_GK",
+    Title = "RSS — GK Hub", Icon = "shield",
+    Author = "Full Features v2", Folder = "RSS_GK",
 })
 
 -- ============================================================
 -- ВКЛАДКА: REACH
 -- ============================================================
 
-local ReachTab = Window:Tab({ Title = "Reach & Hitbox", Icon = "maximize" })
+local ReachTab     = Window:Tab({ Title = "Reach & Hitbox", Icon = "maximize" })
 local ReachSection = ReachTab:Section({ Title = "Хитбокс вратаря" })
 
 ReachSection:Toggle({
@@ -527,7 +733,7 @@ SizeSection:Slider({
 -- ВКЛАДКА: GK FEATURES
 -- ============================================================
 
-local GkTab = Window:Tab({ Title = "GK Features", Icon = "shield-check" })
+local GkTab      = Window:Tab({ Title = "GK Features", Icon = "shield-check" })
 local PickSection = GkTab:Section({ Title = "Выбор позиции" })
 
 PickSection:Dropdown({
@@ -550,10 +756,7 @@ PickSection:Dropdown({
 PickSection:Dropdown({
     Title = "Auto Pick Priority",
     Values = { "Home First", "Away First" }, Value = "Home First", Multi = false, AllowNone = false,
-    Callback = function(v)
-        if not v or v == "" then return end
-        AutoPickPriority = v
-    end
+    Callback = function(v) if v and v ~= "" then AutoPickPriority = v end end
 })
 
 PickSection:Slider({
@@ -564,7 +767,7 @@ PickSection:Slider({
 
 PickSection:Toggle({
     Title = "Auto Pick GK",
-    Desc = "Пока ты в Fans: быстро пытается занять свободного GK",
+    Desc = "Пока ты в Fans: быстро занять свободного GK",
     Default = false,
     Callback = function(v)
         if v then
@@ -580,11 +783,11 @@ PickSection:Toggle({
 })
 
 GkTab:Space()
-local DiveSection = GkTab:Section({ Title = "Auto Dive (7v7 улучшен)" })
+local DiveSection = GkTab:Section({ Title = "Auto Dive — Smart + Jump" })
 
 DiveSection:Slider({
     Title = "Радиус дайва (studs)",
-    Step = 0.5, Value = { Min = 5, Max = 30, Default = 16 }, -- макс больше для 7v7
+    Step = 0.5, Value = { Min = 5, Max = 30, Default = 16 },
     Callback = function(v) DIVE_DIST = v end
 })
 
@@ -595,8 +798,24 @@ DiveSection:Slider({
 })
 
 DiveSection:Toggle({
+    Title = "Auto Jump (высокие мячи)",
+    Desc = "Прыгает вместо дайва если мяч летит высоко",
+    Default = false,
+    Callback = function(v)
+        AutoJumpEnabled = v
+        WindUI:Notify({ Title = "Auto Jump", Icon = "arrow-up", Content = v and "Включён!" or "Выключен.", Duration = 3 })
+    end
+})
+
+DiveSection:Slider({
+    Title = "Порог высоты прыжка",
+    Step = 0.5, Value = { Min = 2, Max = 10, Default = 4.5 },
+    Callback = function(v) JUMP_HEIGHT_THRESH = v end
+})
+
+DiveSection:Toggle({
     Title = "Auto Dive",
-    Desc  = "Умный дайв с предсказанием. Улучшен для 7v7.",
+    Desc = "Smart дайв: учитывает бьющего + Auto Jump. Для 7v7.",
     Default = false,
     Callback = function(v)
         if v then StartAutoDive() else StopAutoDive() end
@@ -604,10 +823,106 @@ DiveSection:Toggle({
 })
 
 -- ============================================================
+-- ВКЛАДКА: POSITIONING — НОВОЕ
+-- ============================================================
+
+local PosTab     = Window:Tab({ Title = "Positioning", Icon = "move" })
+local PosSection = PosTab:Section({ Title = "Auto Position" })
+
+PosSection:Toggle({
+    Title = "Auto Position",
+    Desc = "GK двигается по X следя за мячом. Включай стоя в воротах!",
+    Default = false,
+    Callback = function(v)
+        if v then StartAutoPosition() else StopAutoPosition() end
+    end
+})
+
+PosSection:Slider({
+    Title = "Ширина ворот (half-width)",
+    Step = 0.5, Value = { Min = 4, Max = 20, Default = 10 },
+    Callback = function(v) GOAL_HALF_WIDTH = v end
+})
+
+PosSection:Slider({
+    Title = "Скорость следования",
+    Step = 0.01, Value = { Min = 0.05, Max = 0.5, Default = 0.12 },
+    Callback = function(v) POSITION_LERP = v end
+})
+
+PosTab:Space()
+local AngleSection = PosTab:Section({ Title = "Auto Save Angle" })
+
+AngleSection:Toggle({
+    Title = "Auto Save Angle",
+    Desc = "Предпозиция туда куда летит мяч — до дайва",
+    Default = false,
+    Callback = function(v)
+        if v then StartAutoSaveAngle() else StopAutoSaveAngle() end
+    end
+})
+
+AngleSection:Slider({
+    Title = "Скорость смещения",
+    Step = 0.01, Value = { Min = 0.05, Max = 0.4, Default = 0.1 },
+    Callback = function(v) ANGLE_LERP = v end
+})
+
+-- ============================================================
+-- ВКЛАДКА: GK STATS — НОВОЕ
+-- ============================================================
+
+local StatsTab     = Window:Tab({ Title = "GK Stats", Icon = "bar-chart-2" })
+local StatsSection = StatsTab:Section({ Title = "Статистика матча" })
+
+StatsSection:Toggle({
+    Title = "Показать Stats GUI",
+    Desc = "Отображает сейвы/голы/% в углу экрана",
+    Default = false,
+    Callback = function(v)
+        if v then
+            CreateStatsGui()
+        else
+            pcall(function()
+                local old = LocalPlayer.PlayerGui:FindFirstChild("GKStatsGui")
+                if old then old:Destroy() end
+            end)
+            StatsGui = nil
+        end
+    end
+})
+
+StatsSection:Slider({
+    Title = "Порог голевой линии (studs)",
+    Desc = "На сколько studs мяч должен пройти за ворота",
+    Step = 0.5, Value = { Min = 1, Max = 8, Default = 3 },
+    Callback = function(v) GOAL_BEHIND_DIST = v end
+})
+
+StatsSection:Button({
+    Title = "➕ Добавить сейв вручную",
+    Desc = "Если авто-подсчёт пропустил",
+    Callback = function() CountSave() end
+})
+
+StatsSection:Button({
+    Title = "➕ Добавить гол вручную",
+    Callback = function() CountGoal() end
+})
+
+StatsSection:Button({
+    Title = "🔄 Сбросить статистику",
+    Callback = function()
+        ResetStats()
+        WindUI:Notify({ Title = "Статистика", Icon = "refresh-cw", Content = "Сброшена!", Duration = 3 })
+    end
+})
+
+-- ============================================================
 -- ВКЛАДКА: BALL PREDICTOR
 -- ============================================================
 
-local PredTab = Window:Tab({ Title = "Ball Predictor", Icon = "activity" })
+local PredTab     = Window:Tab({ Title = "Ball Predictor", Icon = "activity" })
 local PredSection = PredTab:Section({ Title = "Предсказание траектории" })
 
 PredSection:Toggle({
@@ -628,20 +943,22 @@ LocalPlayer.CharacterAdded:Connect(function()
     CreateHitbox()
     UpdateHitbox(IsReachEnabled)
     if DiveConn then
-        StopAutoDive()
-        task.wait(0.5)
-        StartAutoDive()
+        StopAutoDive(); task.wait(0.5); StartAutoDive()
     end
     if AutoPickEnabled then
-        StopAutoPickGK()
-        task.wait(0.2)
-        StartAutoPickGK()
+        StopAutoPickGK(); task.wait(0.2); StartAutoPickGK()
+    end
+    if AutoPositionEnabled then
+        StopAutoPosition(); task.wait(0.2); StartAutoPosition()
+    end
+    if AutoSaveAngleEnabled then
+        StopAutoSaveAngle(); task.wait(0.2); StartAutoSaveAngle()
     end
 end)
 
 WindUI:Notify({
-    Title = "✅ RSS GK Hub 7v7", Icon = "shield",
-    Content = "Загружен! Дайв улучшен для 7v7.", Duration = 4,
+    Title = "✅ RSS GK Hub", Icon = "shield",
+    Content = "Все фичи загружены! Удачи!", Duration = 4,
 })
 
-print("⚽ RSS GK Hub (7v7 Improved) загружен!")
+print("⚽ RSS GK Hub (Full Features v2) загружен!")
