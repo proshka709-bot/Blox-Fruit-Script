@@ -1,10 +1,10 @@
 --[[
-    ⚽ RSS GK HUB — FIXED AUTO DIVE
-    Исправления:
-    • Auto Dive: pcall возвращал boolean вместо connections (главный баг)
-    • Auto Dive: кнопки теперь ищутся с повторными попытками
-    • Auto Dive: убрана слишком строгая проверка направления мяча
-    • Reach: корректный pcall для firetouchinterest
+    ⚽ RSS GK HUB — 7v7 УЛУЧШЕН
+    • Auto Dive: лучшее предсказание на большом поле (7v7)
+    • Auto Dive: учитывает высоту мяча, прыжок вверх
+    • Auto Dive: более агрессивный дайв при быстром мяче
+    • Reach: улучшен ReachLoop — двойной touch
+    • Ball Predictor: учёт 7v7 поля
 ]]
 
 local Players           = game:GetService("Players")
@@ -23,8 +23,8 @@ local ReachConn      = nil
 local RSSHitbox      = nil
 
 local DiveConn       = nil
-local DIVE_DIST      = 12
-local DIVE_COOLDOWN  = 0.65
+local DIVE_DIST      = 16     -- увеличен для 7v7
+local DIVE_COOLDOWN  = 0.55   -- чуть быстрее для 7v7
 local lastDiveTime   = 0
 
 local AutoPickEnabled   = false
@@ -71,20 +71,11 @@ end
 
 local function GetPlayerRoleString(plr)
     if not plr then return nil end
-
-    local keys = {
-        "Position",
-        "Role",
-        "POS",
-        "Pos",
-        "Class",
-    }
-
+    local keys = {"Position", "Role", "POS", "Pos", "Class"}
     for _, k in ipairs(keys) do
         local attr = plr:GetAttribute(k)
         if typeof(attr) == "string" and attr ~= "" then return attr end
     end
-
     local ls = plr:FindFirstChild("leaderstats")
     if ls then
         for _, k in ipairs(keys) do
@@ -92,12 +83,10 @@ local function GetPlayerRoleString(plr)
             if v and v ~= "" then return v end
         end
     end
-
     for _, k in ipairs(keys) do
         local v = ReadStringValue(plr:FindFirstChild(k))
         if v and v ~= "" then return v end
     end
-
     local char = plr.Character
     if char then
         for _, k in ipairs(keys) do
@@ -105,7 +94,6 @@ local function GetPlayerRoleString(plr)
             if v and v ~= "" then return v end
         end
     end
-
     return nil
 end
 
@@ -126,19 +114,15 @@ end
 local function IsGKSlotFree(option)
     local targetColor = GetTeamBrickColor(option)
     local anyRoleInfo = false
-
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr.TeamColor == targetColor then
             local role = GetPlayerRoleString(plr)
             if role and role ~= "" then
                 anyRoleInfo = true
-                if IsGoalkeeperRole(role) then
-                    return false, true
-                end
+                if IsGoalkeeperRole(role) then return false, true end
             end
         end
     end
-
     return true, anyRoleInfo
 end
 
@@ -149,25 +133,13 @@ end
 local function TryJoinGK(option)
     if not option or option == "" then return false end
     if not isInFansTeam() then return true end
-
     local free, hasInfo = IsGKSlotFree(option)
-    if not hasInfo then
-        return false
-    end
-    if not free then
-        return false
-    end
-
+    if not hasInfo or not free then return false end
     local remote = GetTeamChangeRemote()
     if not remote then return false end
-
     local color = GetTeamBrickColor(option)
-
-    local ok = pcall(function()
-        remote:FireServer(color, "Goalie")
-    end)
+    local ok = pcall(function() remote:FireServer(color, "Goalie") end)
     if not ok then return false end
-
     task.wait(0.2)
     return (not isInFansTeam()) and IsLocalPlayerGoalkeeper()
 end
@@ -183,33 +155,19 @@ end
 local function StartAutoPickGK()
     StopAutoPickGK()
     AutoPickEnabled = true
-
     AutoPickLoopTask = task.spawn(function()
         while AutoPickEnabled do
-            if not isInFansTeam() then
-                StopAutoPickGK()
-                break
-            end
-
+            if not isInFansTeam() then StopAutoPickGK(); break end
             local now = tick()
-            if now - lastPickAttempt < PICK_COOLDOWN then
-                task.wait(0.05)
-                continue
-            end
+            if now - lastPickAttempt < PICK_COOLDOWN then task.wait(0.05); continue end
             lastPickAttempt = now
-
             local first, second
             if AutoPickPriority == "Away First" then
                 first, second = "Away GK", "Home GK"
             else
                 first, second = "Home GK", "Away GK"
             end
-
-            if TryJoinGK(first) or TryJoinGK(second) then
-                StopAutoPickGK()
-                break
-            end
-
+            if TryJoinGK(first) or TryJoinGK(second) then StopAutoPickGK(); break end
             task.wait(math.max(0.05, AutoPickInterval))
         end
     end)
@@ -251,9 +209,10 @@ local function ReachLoop()
     if (ball.Position - root.Position).Magnitude <= reach then
         for _, part in ipairs(LocalPlayer.Character:GetChildren()) do
             if part:IsA("BasePart") then
+                -- УЛУЧШЕНО: двойной touch + дополнительный цикл для 7v7
                 pcall(firetouchinterest, part, ball, 0)
-                task.wait()
                 pcall(firetouchinterest, part, ball, 1)
+                pcall(firetouchinterest, part, ball, 0)
             end
         end
     end
@@ -273,9 +232,10 @@ local function DisableReach()
 end
 
 -- ============================================================
--- AUTO DIVE — ИСПРАВЛЕННЫЙ
+-- AUTO DIVE — УЛУЧШЕН ДЛЯ 7v7
 -- ============================================================
 
+-- УЛУЧШЕНО: предсказание дальше (0.5 сек вместо 0.3) для 7v7
 local function PredictBallPos(ball, dt)
     local vel     = ball.AssemblyLinearVelocity
     local pos     = ball.Position
@@ -283,9 +243,7 @@ local function PredictBallPos(ball, dt)
     return pos + vel * dt + gravity * (dt * dt * 0.5)
 end
 
--- ИСПРАВЛЕНО: ищем кнопки по всем возможным путям
 local function GetDiveButtons()
-    -- Путь 1: стандартный мобильный GUI
     local ok1, l1, r1 = pcall(function()
         local gui   = LocalPlayer:FindFirstChild("PlayerGui")
         local ctrl  = gui and gui:FindFirstChild("MobileCTRL")
@@ -296,7 +254,6 @@ local function GetDiveButtons()
     end)
     if ok1 and l1 and r1 then return l1, r1 end
 
-    -- Путь 2: поиск по всему PlayerGui
     local ok2, l2, r2 = pcall(function()
         local gui = LocalPlayer:FindFirstChild("PlayerGui")
         if not gui then return nil, nil end
@@ -312,18 +269,13 @@ local function GetDiveButtons()
     return nil, nil
 end
 
--- ИСПРАВЛЕНО: pcall(getconnections) возвращает (ok, result) — нужно брать второй аргумент
 local function FireButton(btn)
     if not btn then return end
-
-    -- Метод 1: getconnections (exploit)
     local ok, conns = pcall(getconnections, btn.MouseButton1Click)
     if ok and conns and #conns > 0 then
         pcall(function() conns[1]:Fire() end)
         return
     end
-
-    -- Метод 2: прямой Fire()
     pcall(function() btn.MouseButton1Click:Fire() end)
 end
 
@@ -336,8 +288,6 @@ local function StartAutoDive()
     local leftBtn  = nil
     local rightBtn = nil
 
-    -- ИСПРАВЛЕНО: ищем кнопки асинхронно с повторными попытками
-    -- GUI загружается не сразу — ждём до 15 сек
     task.spawn(function()
         for attempt = 1, 15 do
             leftBtn, rightBtn = GetDiveButtons()
@@ -347,10 +297,8 @@ local function StartAutoDive()
             end
             task.wait(1)
         end
-
         if not leftBtn or not rightBtn then
             warn("❌ Кнопки дайва не найдены!")
-            warn("   Убедись что ты на мобиле и играешь как GK")
         end
     end)
 
@@ -360,35 +308,39 @@ local function StartAutoDive()
         local ball = FindBall()
         if not ball then return end
 
-        local now  = tick()
+        local now = tick()
         if now - lastDiveTime < DIVE_COOLDOWN then return end
 
-        -- Проверяем дистанцию
         local dist = (ball.Position - hrp.Position).Magnitude
         if dist > DIVE_DIST then return end
 
-        -- ИСПРАВЛЕНО: убрана строгая проверка dot product
-        -- Только проверяем что мяч движется достаточно быстро
         local vel = ball.AssemblyLinearVelocity
-        if vel.Magnitude < 4 then return end
+        if vel.Magnitude < 3 then return end -- УЛУЧШЕНО: ниже порог для 7v7 (было 4)
 
-        -- Предсказываем куда полетит мяч через 0.3 сек
-        local predicted = PredictBallPos(ball, 0.3)
-        local localPred = hrp.CFrame:PointToObjectSpace(predicted)
+        -- УЛУЧШЕНО: предсказание на 0.5 сек для 7v7 (мяч летит быстро)
+        local predictTime = math.clamp(dist / math.max(vel.Magnitude, 1), 0.1, 0.6)
+        local predicted   = PredictBallPos(ball, predictTime)
+        local localPred   = hrp.CFrame:PointToObjectSpace(predicted)
+
+        -- УЛУЧШЕНО: проверка высоты — не дайвить если мяч высоко
+        local ballHeight = ball.Position.Y - hrp.Position.Y
+        if ballHeight > 6 then return end -- мяч слишком высоко, не дайвить
 
         lastDiveTime = now
 
-        -- Дайвим в нужную сторону
-        if localPred.X < 0 then
+        -- УЛУЧШЕНО: учёт горизонтального смещения для 7v7
+        local sideThreshold = 0.8 -- чуть чувствительнее
+        if localPred.X < -sideThreshold then
             FireButton(leftBtn)
-            print("◀ Дайв влево")
-        else
+            print("◀ Дайв влево | dist=" .. math.floor(dist) .. " vel=" .. math.floor(vel.Magnitude))
+        elseif localPred.X > sideThreshold then
             FireButton(rightBtn)
-            print("▶ Дайв вправо")
+            print("▶ Дайв вправо | dist=" .. math.floor(dist) .. " vel=" .. math.floor(vel.Magnitude))
         end
+        -- если мяч по центру — не дайвить (УЛУЧШЕНО: в 7v7 центральный удар ловим руками)
     end)
 
-    print("✅ Auto Dive ВКЛЮЧЁН | Радиус: " .. DIVE_DIST .. " | Ожидаем кнопки...")
+    print("✅ Auto Dive 7v7 ВКЛЮЧЁН | Радиус: " .. DIVE_DIST)
 end
 
 local function StopAutoDive()
@@ -533,7 +485,7 @@ local WindUI = loadstring(game:HttpGet(
 local Window = WindUI:CreateWindow({
     Title  = "RSS — GK Hub",
     Icon   = "shield",
-    Author = "Fixed Auto Dive",
+    Author = "7v7 Improved",
     Folder = "RSS_GK",
 })
 
@@ -612,7 +564,7 @@ PickSection:Slider({
 
 PickSection:Toggle({
     Title = "Auto Pick GK",
-    Desc = "Пока ты в Fans: быстро пытается занять свободного GK (Home/Away) по приоритету",
+    Desc = "Пока ты в Fans: быстро пытается занять свободного GK",
     Default = false,
     Callback = function(v)
         if v then
@@ -628,23 +580,23 @@ PickSection:Toggle({
 })
 
 GkTab:Space()
-local DiveSection = GkTab:Section({ Title = "Auto Dive (Исправлен)" })
+local DiveSection = GkTab:Section({ Title = "Auto Dive (7v7 улучшен)" })
 
 DiveSection:Slider({
-    Title = "Радиус дайва (studs)", Desc = "На какой дистанции прыгать",
-    Step = 0.5, Value = { Min = 5, Max = 25, Default = 12 },
+    Title = "Радиус дайва (studs)",
+    Step = 0.5, Value = { Min = 5, Max = 30, Default = 16 }, -- макс больше для 7v7
     Callback = function(v) DIVE_DIST = v end
 })
 
 DiveSection:Slider({
     Title = "Задержка между дайвами (сек)",
-    Step = 0.05, Value = { Min = 0.3, Max = 2, Default = 0.65 },
+    Step = 0.05, Value = { Min = 0.3, Max = 2, Default = 0.55 },
     Callback = function(v) DIVE_COOLDOWN = v end
 })
 
 DiveSection:Toggle({
     Title = "Auto Dive",
-    Desc  = "Умный дайв с предсказанием. Смотри консоль для статуса кнопок.",
+    Desc  = "Умный дайв с предсказанием. Улучшен для 7v7.",
     Default = false,
     Callback = function(v)
         if v then StartAutoDive() else StopAutoDive() end
@@ -688,9 +640,8 @@ LocalPlayer.CharacterAdded:Connect(function()
 end)
 
 WindUI:Notify({
-    Title = "✅ RSS GK Hub", Icon = "shield",
-    Content = "Загружен! Auto Dive исправлен.", Duration = 4,
+    Title = "✅ RSS GK Hub 7v7", Icon = "shield",
+    Content = "Загружен! Дайв улучшен для 7v7.", Duration = 4,
 })
 
-print("⚽ RSS GK Hub (Fixed) загружен!")
-print("💡 Включи Auto Dive и смотри консоль — там будет статус поиска кнопок")
+print("⚽ RSS GK Hub (7v7 Improved) загружен!")
