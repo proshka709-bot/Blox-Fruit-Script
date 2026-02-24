@@ -1,11 +1,9 @@
 --[[
-    ⚽ RSS GK HUB — 7v7 УЛУЧШЕННЫЙ v2.0
-    ★ Все функции улучшены
-    ★ Раздел «Настройки» — вкл/выкл эффектов, чувствительность, производительность
-    ★ Auto Dive: мульти-фреймовое предсказание, настраиваемая чувствительность
-    ★ Reach: умная сортировка частей тела, velocity boost
-    ★ Ball Predictor: настраиваемые визуальные эффекты
-    ★ Notify обёртка: уважает настройки уведомлений
+    ⚽ RSS GK HUB — 7v7 SMART EDITION
+    • Auto Dive: полностью адаптивная реакция, все параметры автоматические
+    • Reach: умный мульти-touch с авто-количеством касаний
+    • Ball Predictor: физика с spin-эффектом, автонастройка по FPS
+    • Без лишних ползунков — скрипт определяет всё сам
 ]]
 
 local Players           = game:GetService("Players")
@@ -14,83 +12,62 @@ local Workspace         = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer       = Players.LocalPlayer
 
--- ============================================================
--- НАСТРОЙКИ (Settings)
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
+-- НАСТРОЙКИ (только пользовательские предпочтения)
+-- ═══════════════════════════════════════════════════════════
 
 local Settings = {
-    -- Уведомления
-    Notifications       = true,
-
-    -- Визуальные эффекты
-    HitboxGlow          = true,      -- Подсветка хитбокса (зелёный бокс)
-    PredictorLine       = true,      -- Линия траектории
-    PredictorLandMark   = true,      -- Круг приземления
-    PredictorPulse      = true,      -- Пульсация круга
-    PredictorGradient   = true,      -- Градиент прозрачности линии
-
-    -- Дайв
-    DiveSensitivity     = 1.0,       -- Множитель чувствительности (0.5–2.0)
-    DiveAutoJump        = true,      -- Авто-прыжок при высоком мяче
-    DiveCenterReaction  = true,      -- Реакция на мяч по центру
-    DiveAggressiveMode  = true,      -- Агрессивный дайв при быстром мяче
-
-    -- Рич
-    ReachTouchCount     = 5,         -- Количество касаний (1–10)
-    ReachVelocityBoost  = true,      -- Увеличивать рич при быстром мяче
-    ReachDoubleTap      = true,      -- Двойной touch для лучшей регистрации
-
-    -- Предиктор (настройки физики)
-    PredictorSegments   = 20,
-    PredictorUpdateRate = 3,         -- Кадры между обновлениями
-    PredictorMinSpeed   = 3,
-    PredictorMaxTime    = 8,
-
-    -- Производительность
-    PerformanceMode     = false,     -- Пропускать кадры для FPS
-
-    -- Авто-восстановление при респавне
-    AutoReconnect       = true,
+    EnableVisualEffects = true,
+    EnableNotifications = true,
 }
 
--- Сохраняем значения по умолчанию для сброса
-local DefaultSettings = {}
-for k, v in pairs(Settings) do DefaultSettings[k] = v end
-
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- СОСТОЯНИЕ
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 
-local HitboxSize        = Vector3.new(10, 10, 10)
-local IsReachEnabled    = false
-local ReachConn         = nil
-local RSSHitbox         = nil
+local HitboxSize     = Vector3.new(10, 10, 10)
+local IsReachEnabled = false
+local ShowHitbox     = false
+local ReachConn      = nil
+local RSSHitbox      = nil
+local HitboxGlow     = nil
+local hitboxPulseConn = nil
 
-local DiveConn          = nil
-local DiveActive        = false
-local lastDiveTime      = 0
+local DiveConn       = nil
+local DiveActive     = false
+local lastDiveTime   = 0
+local prevBallVel    = nil
+local prevBallSpeed  = 0
 
-local AutoPickEnabled   = false
-local AutoPickInterval  = 0.35
-local AutoPickPriority  = "Home First"
-local AutoPickLoopTask  = nil
-local lastPickAttempt   = 0
-local PICK_COOLDOWN     = 0.35
+local predConn       = nil
+local curveFolder    = nil
 
-local cachedBall        = nil
-local lastBallCacheTime = 0
-local BALL_CACHE_DURATION = 0.3
+local cachedBall     = nil
+local ballCacheTime  = 0
 
--- Мульти-фреймовое отслеживание мяча (для улучшенного дайва)
-local velocityHistory   = {}
-local MAX_VEL_HISTORY   = 8
+local WindUI         = nil
 
-local predConn          = nil
-local curveFolder       = nil
+-- ═══════════════════════════════════════════════════════════
+-- FPS МОНИТОР — автоподстройка производительности
+-- ═══════════════════════════════════════════════════════════
 
--- ============================================================
--- УТИЛИТЫ (УЛУЧШЕНЫ)
--- ============================================================
+local frameCount   = 0
+local fpsCheckTime = tick()
+local currentFPS   = 60
+
+RunService.Heartbeat:Connect(function()
+    frameCount += 1
+    local elapsed = tick() - fpsCheckTime
+    if elapsed >= 2 then
+        currentFPS = frameCount / elapsed
+        frameCount = 0
+        fpsCheckTime = tick()
+    end
+end)
+
+-- ═══════════════════════════════════════════════════════════
+-- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+-- ═══════════════════════════════════════════════════════════
 
 local function GetRoot()
     local char = LocalPlayer.Character
@@ -102,229 +79,48 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
--- Расширенный список названий мяча для разных игр
-local BALL_NAMES = {
-    "ball", "TPS", "PSoccerBall", "Soccer Ball", "Football",
-    "SoccerBall", "Ball", "soccer_ball", "GameBall", "MatchBall",
-    "Soccerball", "futbol", "Futbol", "ballon", "SB", "fb"
-}
-
 local function FindBall()
     local now = tick()
-    -- Быстрая проверка кеша с таймаутом
-    if cachedBall and cachedBall.Parent and cachedBall:IsA("BasePart")
-       and (now - lastBallCacheTime) < BALL_CACHE_DURATION then
+    if cachedBall and cachedBall.Parent and cachedBall:IsA("BasePart") and (now - ballCacheTime) < 1.5 then
         return cachedBall
     end
     cachedBall = nil
 
-    for _, name in ipairs(BALL_NAMES) do
+    local names = {
+        "ball", "TPS", "PSoccerBall", "Soccer Ball",
+        "Football", "SoccerBall", "Ball", "BALL"
+    }
+    for _, name in ipairs(names) do
         local b = Workspace:FindFirstChild(name, true)
         if b and b:IsA("BasePart") then
             cachedBall = b
-            lastBallCacheTime = now
+            ballCacheTime = now
             return b
         end
     end
     return nil
 end
 
-local function isInFansTeam()
-    local team = LocalPlayer.Team
-    if not team then return true end
-    local n = team.Name:lower()
-    return n == "fans" or n == "spectators" or n == "spectator" or n == "lobby"
-end
-
-local function GetTeamChangeRemote()
-    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-    return remotes and remotes:FindFirstChild("TeamChange")
-end
-
-local function ReadStringValue(obj)
-    if not obj then return nil end
-    if typeof(obj) == "string" then return obj end
-    if typeof(obj) == "Instance" then
-        if obj:IsA("StringValue") then return obj.Value end
-        if obj:IsA("IntValue") or obj:IsA("NumberValue") then return tostring(obj.Value) end
-    end
-    return nil
-end
-
-local function SearchRoleInObject(obj, keys)
-    if not obj or typeof(obj) ~= "Instance" then return nil end
-    for _, k in ipairs(keys) do
-        local attr = obj:GetAttribute(k)
-        if typeof(attr) == "string" and attr ~= "" then return attr end
-        local v = ReadStringValue(obj:FindFirstChild(k))
-        if v and v ~= "" then return v end
-    end
-    return nil
-end
-
-local function GetPlayerRoleString(plr)
-    if not plr then return nil end
-    local keys = {"Position", "Role", "POS", "Pos", "Class", "GameRole", "TeamRole", "PlayerRole"}
-
-    -- Атрибуты игрока
-    for _, k in ipairs(keys) do
-        local attr = plr:GetAttribute(k)
-        if typeof(attr) == "string" and attr ~= "" then return attr end
-    end
-
-    -- leaderstats
-    local result = SearchRoleInObject(plr:FindFirstChild("leaderstats"), keys)
-    if result then return result end
-
-    -- Дочерние объекты игрока
-    for _, k in ipairs(keys) do
-        local v = ReadStringValue(plr:FindFirstChild(k))
-        if v and v ~= "" then return v end
-    end
-
-    -- Персонаж
-    local char = plr.Character
-    if char then
-        result = SearchRoleInObject(char, keys)
-        if result then return result end
-    end
-    return nil
-end
-
-local GK_PATTERNS = {
-    "goalie", "gk", "goalkeeper", "keeper", "вратарь", "голкипер", "portero", "gardien"
-}
-
-local function IsGoalkeeperRole(role)
-    if not role or role == "" then return false end
-    local lower = string.lower(role)
-    for _, pattern in ipairs(GK_PATTERNS) do
-        if lower == pattern or lower:find(pattern, 1, true) then return true end
-    end
-    return false
-end
-
-local function IsPlayerGoalkeeper(plr)
-    return IsGoalkeeperRole(GetPlayerRoleString(plr))
-end
-
-local function IsLocalPlayerGoalkeeper()
-    return IsPlayerGoalkeeper(LocalPlayer)
-end
-
-local function GetTeamBrickColor(option)
-    return option == "Home GK" and BrickColor.new(23) or BrickColor.new(141)
-end
-
-local function IsGKSlotFree(option)
-    local targetColor = GetTeamBrickColor(option)
-    local anyRoleInfo = false
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.TeamColor == targetColor then
-            local role = GetPlayerRoleString(plr)
-            if role and role ~= "" then
-                anyRoleInfo = true
-                if IsGoalkeeperRole(role) then return false, true end
-            end
-        end
-    end
-    return true, anyRoleInfo
-end
-
--- ============================================================
--- NOTIFY ОБЁРТКА (уважает настройки)
--- ============================================================
-
-local WindUI -- объявляем позже, до UI
-local function Notify(title, icon, content, duration)
-    if not Settings.Notifications then return end
+local function SafeNotify(props)
+    if not Settings.EnableNotifications then return end
     if not WindUI then return end
     pcall(function()
-        WindUI:Notify({
-            Title    = title or "",
-            Icon     = icon or "info",
-            Content  = content or "",
-            Duration = duration or 3,
-        })
+        WindUI:Notify(props)
     end)
 end
 
--- ============================================================
--- AUTO PICK GK (УЛУЧШЕН)
--- ============================================================
-
-local function TryJoinGK(option)
-    if not option or option == "" then return false end
-    if not isInFansTeam() then return true end
-    local free, hasInfo = IsGKSlotFree(option)
-    if not hasInfo or not free then return false end
-    local remote = GetTeamChangeRemote()
-    if not remote then return false end
-    local color = GetTeamBrickColor(option)
-    local ok = pcall(function() remote:FireServer(color, "Goalie") end)
-    if not ok then return false end
-    for _ = 1, 4 do
-        task.wait(0.12)
-        if not isInFansTeam() and IsLocalPlayerGoalkeeper() then return true end
-    end
-    return (not isInFansTeam()) and IsLocalPlayerGoalkeeper()
-end
-
-local function StopAutoPickGK()
-    AutoPickEnabled = false
-    if AutoPickLoopTask then
-        pcall(task.cancel, AutoPickLoopTask)
-        AutoPickLoopTask = nil
-    end
-end
-
-local function StartAutoPickGK()
-    StopAutoPickGK()
-    AutoPickEnabled = true
-    AutoPickLoopTask = task.spawn(function()
-        while AutoPickEnabled do
-            if not isInFansTeam() then
-                Notify("✅ Auto Pick", "check", "Вы уже в команде!", 3)
-                StopAutoPickGK()
-                break
-            end
-            local now = tick()
-            if now - lastPickAttempt < PICK_COOLDOWN then task.wait(0.05); continue end
-            lastPickAttempt = now
-            local first, second
-            if AutoPickPriority == "Away First" then
-                first, second = "Away GK", "Home GK"
-            else
-                first, second = "Home GK", "Away GK"
-            end
-            if TryJoinGK(first) then
-                Notify("✅ Auto Pick", "check", "Занял " .. first, 3)
-                StopAutoPickGK()
-                break
-            end
-            if TryJoinGK(second) then
-                Notify("✅ Auto Pick", "check", "Занял " .. second, 3)
-                StopAutoPickGK()
-                break
-            end
-            task.wait(math.max(0.05, AutoPickInterval))
-        end
-    end)
-end
-
--- ============================================================
--- HITBOX / REACH (УЛУЧШЕН)
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
+-- HITBOX / REACH — АДАПТИВНЫЙ
+-- ═══════════════════════════════════════════════════════════
 
 local function CreateHitbox()
-    if RSSHitbox then
-        pcall(function() RSSHitbox:Destroy() end)
-        RSSHitbox = nil
-    end
+    if RSSHitbox then pcall(function() RSSHitbox:Destroy() end); RSSHitbox = nil end
+    if HitboxGlow then pcall(function() HitboxGlow:Destroy() end); HitboxGlow = nil end
+
     local root = GetRoot()
     if not root then return end
 
-    RSSHitbox              = Instance.new("BoxHandleAdornment")
+    RSSHitbox = Instance.new("BoxHandleAdornment")
     RSSHitbox.Name         = "RSSHitbox"
     RSSHitbox.AlwaysOnTop  = false
     RSSHitbox.ZIndex       = 10
@@ -333,17 +129,34 @@ local function CreateHitbox()
     RSSHitbox.Size         = HitboxSize
     RSSHitbox.Adornee      = root
     RSSHitbox.Parent       = Workspace.Terrain
+
+    HitboxGlow = Instance.new("BoxHandleAdornment")
+    HitboxGlow.Name         = "RSSGlow"
+    HitboxGlow.AlwaysOnTop  = false
+    HitboxGlow.ZIndex       = 9
+    HitboxGlow.Color3       = Color3.fromRGB(0, 180, 80)
+    HitboxGlow.Transparency = 1
+    HitboxGlow.Size         = HitboxSize + Vector3.new(0.5, 0.5, 0.5)
+    HitboxGlow.Adornee      = root
+    HitboxGlow.Parent       = Workspace.Terrain
 end
 
-local function UpdateHitbox(show)
+local function UpdateHitbox()
     if not RSSHitbox then return end
     local root = GetRoot()
     if not root then return end
+
     RSSHitbox.Size    = HitboxSize
     RSSHitbox.Adornee = root
-    -- Учитываем настройку HitboxGlow
-    local visible = show and IsReachEnabled and Settings.HitboxGlow
+
+    local visible = ShowHitbox and IsReachEnabled and Settings.EnableVisualEffects
     RSSHitbox.Transparency = visible and 0.4 or 1
+
+    if HitboxGlow then
+        HitboxGlow.Size    = HitboxSize + Vector3.new(0.5, 0.5, 0.5)
+        HitboxGlow.Adornee = root
+        HitboxGlow.Transparency = visible and (0.6 + math.sin(tick() * 3) * 0.15) or 1
+    end
 end
 
 local function ReachLoop()
@@ -358,54 +171,41 @@ local function ReachLoop()
     if not char then return end
 
     local ballPos = ball.Position
-    local ballVel = ball.AssemblyLinearVelocity
-    local baseReach = math.max(HitboxSize.X, HitboxSize.Y, HitboxSize.Z) / 2
-    local reach = baseReach
+    local reach   = math.max(HitboxSize.X, HitboxSize.Y, HitboxSize.Z) / 2
+    local dist    = (ballPos - root.Position).Magnitude
 
-    -- ★ Velocity Boost: увеличиваем рич при быстром мяче
-    if Settings.ReachVelocityBoost and ballVel.Magnitude > 5 then
-        local speedBonus = math.clamp(ballVel.Magnitude * 0.015, 0, 2.5)
-        reach = reach + speedBonus
-    end
-
-    local distToBall = (ballPos - root.Position).Magnitude
-    if distToBall > reach then return end
-
-    -- Собираем части тела
-    local parts = {}
-    for _, part in ipairs(char:GetChildren()) do
-        if part:IsA("BasePart") then
-            parts[#parts + 1] = part
+    if dist <= reach then
+        local parts = {}
+        for _, part in ipairs(char:GetChildren()) do
+            if part:IsA("BasePart") then
+                table.insert(parts, part)
+            end
         end
-    end
-
-    -- ★ Умная сортировка: зависит от высоты мяча
-    local ballRelHeight = ballPos.Y - root.Position.Y
-    if ballRelHeight > 3 then
-        -- Высокий мяч: приоритет верхним частям тела
-        table.sort(parts, function(a, b)
-            return a.Position.Y > b.Position.Y
-        end)
-    elseif ballRelHeight < -1 then
-        -- Низкий мяч: приоритет нижним частям
-        table.sort(parts, function(a, b)
-            return a.Position.Y < b.Position.Y
-        end)
-    else
-        -- Обычный: приоритет ближайшим частям
         table.sort(parts, function(a, b)
             return (a.Position - ballPos).Magnitude < (b.Position - ballPos).Magnitude
         end)
-    end
 
-    local touchCount = math.min(Settings.ReachTouchCount, #parts)
-    for i = 1, touchCount do
-        local part = parts[i]
-        pcall(firetouchinterest, part, ball, 0)
-        pcall(firetouchinterest, part, ball, 1)
-        -- ★ Двойной touch для лучшей регистрации
-        if Settings.ReachDoubleTap then
+        -- Авто-количество касаний: чем ближе мяч — тем больше
+        local proximity  = 1 - math.clamp(dist / reach, 0, 1)
+        local touchCount = math.clamp(math.floor(3 + proximity * 7), 3, math.min(#parts, 10))
+
+        for i = 1, touchCount do
+            local part = parts[i]
+            if not part then break end
             pcall(firetouchinterest, part, ball, 0)
+            pcall(firetouchinterest, part, ball, 1)
+            pcall(firetouchinterest, part, ball, 0)
+            pcall(firetouchinterest, part, ball, 1)
+        end
+
+        -- Вспышка при касании
+        if Settings.EnableVisualEffects and HitboxGlow and HitboxGlow.Parent then
+            HitboxGlow.Color3 = Color3.fromRGB(255, 255, 0)
+            task.delay(0.12, function()
+                if HitboxGlow and HitboxGlow.Parent then
+                    HitboxGlow.Color3 = Color3.fromRGB(0, 180, 80)
+                end
+            end)
         end
     end
 end
@@ -414,72 +214,49 @@ local function EnableReach()
     if ReachConn then return end
     IsReachEnabled = true
     if not RSSHitbox then CreateHitbox() end
+
     ReachConn = RunService.Heartbeat:Connect(ReachLoop)
-    Notify("✅ Reach", "maximize", "Reach включён", 2)
+
+    if hitboxPulseConn then hitboxPulseConn:Disconnect(); hitboxPulseConn = nil end
+    hitboxPulseConn = RunService.Heartbeat:Connect(function()
+        if IsReachEnabled and ShowHitbox and Settings.EnableVisualEffects
+           and HitboxGlow and HitboxGlow.Parent then
+            local pulse = 1 + math.sin(tick() * 2) * 0.3
+            HitboxGlow.Size         = HitboxSize + Vector3.new(0.5, 0.5, 0.5) * pulse
+            HitboxGlow.Transparency = 0.55 + math.sin(tick() * 3) * 0.15
+        end
+    end)
 end
 
 local function DisableReach()
     if ReachConn then ReachConn:Disconnect(); ReachConn = nil end
+    if hitboxPulseConn then hitboxPulseConn:Disconnect(); hitboxPulseConn = nil end
     IsReachEnabled = false
-    UpdateHitbox(false)
-    Notify("❌ Reach", "minimize", "Reach выключен", 2)
+    UpdateHitbox()
 end
 
--- ============================================================
--- AUTO DIVE — ПОЛНОСТЬЮ УЛУЧШЕН v2.0
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
+-- AUTO DIVE — ПОЛНОСТЬЮ АВТОМАТИЧЕСКИЙ
+-- Все параметры рассчитываются в реальном времени:
+--   • чувствительность, порог скорости, дистанция, кулдаун
+--   • прыжок при высоком мяче
+--   • двойной дайв при экстремальной скорости
+--   • дайв по центру
+-- ═══════════════════════════════════════════════════════════
 
--- Предсказание позиции мяча через dt секунд
 local function PredictBallPos(ball, dt)
     local vel = ball.AssemblyLinearVelocity
     local pos = ball.Position
     local g   = Vector3.new(0, -196.2, 0)
-    return pos + vel * dt + g * (dt * dt * 0.5)
-end
 
--- ★ Мульти-фреймовое отслеживание скорости
-local function TrackBallVelocity(vel)
-    velocityHistory[#velocityHistory + 1] = {
-        vel  = vel,
-        time = tick(),
-        mag  = vel.Magnitude,
-    }
-    while #velocityHistory > MAX_VEL_HISTORY do
-        table.remove(velocityHistory, 1)
-    end
-end
-
--- ★ Улучшенная детекция удара с мульти-фреймовым анализом
-local function DetectKick()
-    local n = #velocityHistory
-    if n < 2 then return false end
-
-    local curr = velocityHistory[n]
-    local prev = velocityHistory[n - 1]
-
-    local accel     = (curr.vel - prev.vel).Magnitude
-    local speedJump = curr.mag - prev.mag
-    local sens      = Settings.DiveSensitivity
-
-    -- Резкое ускорение
-    if accel > (10 / sens) then return true end
-    -- Резкий рост скорости
-    if speedJump > (8 / sens) then return true end
-
-    -- ★ Мульти-фреймовая проверка: среднее ускорение за 3 кадра
-    if n >= 3 then
-        local prev2 = velocityHistory[n - 2]
-        local avgAccel = ((curr.vel - prev.vel).Magnitude + (prev.vel - prev2.vel).Magnitude) / 2
-        if avgAccel > (7 / sens) then return true end
+    -- Упрощённый эффект Магнуса (spin)
+    local angVel = ball.AssemblyAngularVelocity
+    local magnus = Vector3.zero
+    if angVel.Magnitude > 1 then
+        magnus = angVel:Cross(vel) * 0.0005 * dt
     end
 
-    -- ★ Проверка смены направления (кто-то перехватил мяч)
-    if n >= 2 then
-        local dotDir = curr.vel.Unit:Dot(prev.vel.Unit)
-        if dotDir < -0.3 and curr.mag > 8 then return true end
-    end
-
-    return false
+    return pos + vel * dt + g * (dt * dt * 0.5) + magnus
 end
 
 local function GetDiveButtons()
@@ -497,6 +274,7 @@ local function GetDiveButtons()
             rightBtn = jump:FindFirstChild("RightDive")
         end
     end)
+
     if leftBtn and rightBtn then return leftBtn, rightBtn end
 
     leftBtn, rightBtn = nil, nil
@@ -507,6 +285,7 @@ local function GetDiveButtons()
             if leftBtn and rightBtn then break end
         end
     end)
+
     return leftBtn, rightBtn
 end
 
@@ -514,14 +293,15 @@ local function FireButton(btn)
     if not btn then return end
     local ok, conns = pcall(getconnections, btn.MouseButton1Click)
     if ok and conns then
-        for _, conn in ipairs(conns) do pcall(function() conn:Fire() end) end
+        for _, conn in ipairs(conns) do
+            pcall(function() conn:Fire() end)
+        end
         if #conns > 0 then return end
     end
     pcall(function() btn.MouseButton1Click:Fire() end)
 end
 
 local function TryJump()
-    if not Settings.DiveAutoJump then return end
     local hum = GetHumanoid()
     if hum and hum:GetState() ~= Enum.HumanoidStateType.Jumping
           and hum:GetState() ~= Enum.HumanoidStateType.Freefall then
@@ -529,193 +309,197 @@ local function TryJump()
     end
 end
 
--- ★ Улучшенная проверка удара
 local function IsShot(ball, hrp)
-    local vel    = ball.AssemblyLinearVelocity
-    local velMag = vel.Magnitude
-    local sens   = Settings.DiveSensitivity
+    local vel   = ball.AssemblyLinearVelocity
+    local speed = vel.Magnitude
+    local dist  = (ball.Position - hrp.Position).Magnitude
 
-    -- Минимальная скорость с учётом чувствительности
-    if velMag < (12 / sens) then return false end
+    -- Авто-порог минимальной скорости: ближе = мягче
+    local minSpeed = math.clamp(10 + dist * 0.15, 8, 25)
+    if speed < minSpeed then return false end
 
-    local horizVel = Vector3.new(vel.X, 0, vel.Z)
-    local horizMag = horizVel.Magnitude
+    -- Проверка горизонтального направления к вратарю
+    local toGK = hrp.Position - ball.Position
+    local toGKFlat = Vector3.new(toGK.X, 0, toGK.Z)
+    if toGKFlat.Magnitude < 0.1 then return true end
 
-    local ballHeight = ball.Position.Y - hrp.Position.Y
-    if ballHeight < 1.5 and horizMag < (20 / sens) then return false end
+    local velFlat = Vector3.new(vel.X, 0, vel.Z)
+    if velFlat.Magnitude < 0.1 then return false end
 
-    -- Направление к вратарю
-    local toGK    = hrp.Position - ball.Position
-    local toGKDir = Vector3.new(toGK.X, 0, toGK.Z)
-    if toGKDir.Magnitude < 0.1 then return true end
-    toGKDir = toGKDir.Unit
+    local dot = toGKFlat.Unit:Dot(velFlat.Unit)
 
-    local velDir = Vector3.new(vel.X, 0, vel.Z)
-    if velDir.Magnitude < 0.1 then return false end
-    velDir = velDir.Unit
-
-    local dot = toGKDir:Dot(velDir)
-    -- ★ С учётом чувствительности: ниже порог = раньше реакция
-    if dot < (0.15 / sens) then return false end
-
-    return true
+    -- Адаптивный порог: быстрые мячи — мягче, медленные — строже
+    local threshold = math.clamp(0.2 - speed / 400, 0.02, 0.25)
+    return dot > threshold
 end
 
 local function StartAutoDive()
     if DiveConn then DiveConn:Disconnect(); DiveConn = nil end
-    DiveActive       = true
-    velocityHistory  = {}
+    DiveActive    = true
+    prevBallVel   = nil
+    prevBallSpeed = 0
 
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
     local hrp  = char:WaitForChild("HumanoidRootPart", 5)
     if not hrp then
-        warn("❌ HumanoidRootPart не найден!")
+        warn("[RSS GK] HumanoidRootPart не найден!")
         DiveActive = false
         return
     end
 
-    local leftBtn  = nil
-    local rightBtn = nil
+    local leftBtn, rightBtn
 
-    -- ★ Поиск кнопок в фоне с уведомлением
     task.spawn(function()
-        for attempt = 1, 25 do
+        for attempt = 1, 20 do
             leftBtn, rightBtn = GetDiveButtons()
             if leftBtn and rightBtn then
-                Notify("✅ Дайв", "shield-check", "Кнопки найдены (попытка #" .. attempt .. ")", 2)
+                print("[RSS GK] Кнопки дайва найдены, попытка #" .. attempt)
                 break
             end
-            task.wait(0.7)
+            task.wait(0.8)
         end
         if not leftBtn or not rightBtn then
-            Notify("❌ Дайв", "alert-triangle", "Кнопки дайва не найдены!", 5)
+            warn("[RSS GK] Кнопки дайва не найдены!")
         end
     end)
-
-    local frameCounter = 0
 
     DiveConn = RunService.Heartbeat:Connect(function()
         if not leftBtn or not rightBtn then return end
         if not hrp or not hrp.Parent then return end
 
-        -- ★ Режим производительности: пропускаем кадры
-        if Settings.PerformanceMode then
-            frameCounter = frameCounter + 1
-            if frameCounter % 2 ~= 0 then return end
+        local ball = FindBall()
+        if not ball then
+            prevBallVel = nil
+            prevBallSpeed = 0
+            return
         end
 
-        local ball = FindBall()
-        if not ball then velocityHistory = {}; return end
+        local vel   = ball.AssemblyLinearVelocity
+        local speed = vel.Magnitude
 
-        local vel    = ball.AssemblyLinearVelocity
-        local velMag = vel.Magnitude
+        -- Детекция момента удара (резкое ускорение)
+        local wasKicked = false
+        if prevBallVel then
+            local accel     = (vel - prevBallVel).Magnitude
+            local speedJump = speed - prevBallSpeed
+            if accel > 10 or speedJump > 8 then
+                wasKicked = true
+            end
+        end
+        prevBallVel   = vel
+        prevBallSpeed = speed
 
-        -- ★ Отслеживание скорости мяча (мульти-фреймовое)
-        TrackBallVelocity(vel)
-
-        -- ★ Улучшенная детекция удара
-        local wasKicked = DetectKick()
-
-        -- Проверка: это удар?
         if not IsShot(ball, hrp) then return end
 
         local now = tick()
-        local cooldown = wasKicked and 0.10 or 0.22
+
+        -- Авто-кулдаун: короче при ударе, длиннее при обычном полёте
+        local cooldown = wasKicked and 0.1 or 0.22
         if now - lastDiveTime < cooldown then return end
 
         local ballPos = ball.Position
         local hrpPos  = hrp.Position
         local dist    = (ballPos - hrpPos).Magnitude
 
-        -- ★ Авто-дистанция с учётом агрессивного режима
-        local baseMax = Settings.DiveAggressiveMode and 10 or 8
-        local maxDist = math.clamp(baseMax + velMag * 0.25, 12, 35)
+        -- Авто-дистанция реакции: масштабируется со скоростью мяча
+        local maxDist = math.clamp(10 + speed * 0.28, 12, 40)
         if dist > maxDist then return end
 
-        -- ★ Уверенность: дайвим только если отслеживали мяч достаточно
-        if #velocityHistory < 2 then return end
+        -- Предсказание позиции мяча
+        local timeToArrive = dist / math.max(speed, 1)
+        local predictTime  = math.clamp(timeToArrive, 0.03, 0.6)
+        local predicted     = PredictBallPos(ball, predictTime)
+        local localPred     = hrp.CFrame:PointToObjectSpace(predicted)
+        local predHeight    = predicted.Y - hrpPos.Y
 
-        -- Время до прилёта
-        local timeToArrive = dist / math.max(velMag, 1)
-        local predictTime  = math.clamp(timeToArrive, 0.05, 0.5)
-
-        -- ★ Мульти-шаговое предсказание: среднее из 2 точек
-        local predicted1 = PredictBallPos(ball, predictTime)
-        local predicted2 = PredictBallPos(ball, predictTime * 0.7)
-        local predicted  = (predicted1 + predicted2) * 0.5
-
-        local localPred  = hrp.CFrame:PointToObjectSpace(predicted)
-        local predHeight = predicted.Y - hrpPos.Y
-
-        if predHeight > 9 then return end -- слишком высоко
+        -- Слишком высоко — не реагируем
+        if predHeight > 10 then return end
 
         lastDiveTime = now
 
-        -- ★ Прыжок при высоком мяче (учитывает настройку)
+        -- Прыжок при высоком мяче
         if predHeight > 1.2 then
             TryJump()
         end
 
-        -- ★ Порог стороны: чем быстрее мяч, тем быстрее реакция
-        local sideThreshold = math.clamp(0.6 - (velMag / 200) * Settings.DiveSensitivity, 0.08, 0.6)
+        -- Авто-порог стороны: быстрый мяч — уже порог
+        local sideThreshold = math.clamp(0.5 - speed / 200, 0.05, 0.5)
 
         if localPred.X < -sideThreshold then
+            -- Мяч слева
             FireButton(leftBtn)
+            -- Двойной дайв при экстремальной скорости
+            if speed > 50 then
+                task.delay(0.05, function() FireButton(leftBtn) end)
+            end
+
         elseif localPred.X > sideThreshold then
+            -- Мяч справа
             FireButton(rightBtn)
+            if speed > 50 then
+                task.delay(0.05, function() FireButton(rightBtn) end)
+            end
+
         else
-            -- ★ Мяч по центру: реакция по настройке
-            if Settings.DiveCenterReaction and velMag > 12 then
+            -- Мяч по центру: прыжок + дайв в ближайшую сторону
+            if speed > 15 then
                 TryJump()
-                FireButton(leftBtn)
-                FireButton(rightBtn)
+                if localPred.X < 0 then
+                    FireButton(leftBtn)
+                else
+                    FireButton(rightBtn)
+                end
             end
         end
     end)
 
-    Notify("✅ Auto Dive", "shield", "Дайв 7v7 включён!", 3)
+    SafeNotify({
+        Title = "✅ Auto Dive",
+        Icon = "shield",
+        Content = "Авто-дайв включён! Все параметры автоматические.",
+        Duration = 3,
+    })
+    print("[RSS GK] Auto Dive ВКЛЮЧЁН")
 end
 
 local function StopAutoDive()
     DiveActive = false
     if DiveConn then DiveConn:Disconnect(); DiveConn = nil end
-    velocityHistory = {}
-    Notify("❌ Auto Dive", "shield-off", "Дайв выключен", 2)
+    prevBallVel   = nil
+    prevBallSpeed = 0
+    SafeNotify({
+        Title = "Auto Dive",
+        Icon = "shield-off",
+        Content = "Авто-дайв отключён",
+        Duration = 2,
+    })
+    print("[RSS GK] Auto Dive ОТКЛЮЧЁН")
 end
 
--- ============================================================
--- BALL PREDICTOR (УЛУЧШЕН — учитывает настройки)
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
+-- BALL PREDICTOR — АВТОНАСТРОЙКА ПО FPS
+-- ═══════════════════════════════════════════════════════════
 
 local function StartPredictor()
-    local cfg = {
-        gravity       = 196.2,
-        bounceDamping = 0.68,
-        groundHeight  = 0,
-        airResistance = 0.99,
-        friction      = 0.85,
-        segmentTrans  = 0.25,
-        dt            = 0.04,
-        colorCurve    = Color3.fromRGB(0, 220, 255),
-        colorLand     = Color3.fromRGB(255, 220, 0),
-    }
+    -- Авто-параметры по текущему FPS
+    local lowFPS      = currentFPS < 40
+    local segCount    = lowFPS and 12 or 20
+    local updateEvery = lowFPS and 5 or 3
+    local simDt       = lowFPS and 0.06 or 0.04
 
-    if curveFolder then
-        pcall(function() curveFolder:Destroy() end)
-        curveFolder = nil
-    end
+    if curveFolder then pcall(function() curveFolder:Destroy() end) end
     curveFolder        = Instance.new("Folder")
     curveFolder.Name   = "GK_Predictor"
     curveFolder.Parent = Workspace
 
     local segs = {}
-    for i = 1, Settings.PredictorSegments do
+    for i = 1, segCount do
         local s = Instance.new("Part")
         s.Anchored     = true
         s.CanCollide   = false
         s.CastShadow   = false
         s.Material     = Enum.Material.Neon
-        s.Color        = cfg.colorCurve
+        s.Color        = Color3.fromRGB(0, 220, 255)
         s.Transparency = 1
         s.Size         = Vector3.new(0.25, 0.25, 1)
         s.Parent       = curveFolder
@@ -723,35 +507,36 @@ local function StartPredictor()
     end
 
     local marker = Instance.new("Part")
-    marker.Anchored    = true
-    marker.CanCollide  = false
-    marker.CastShadow  = false
-    marker.Material    = Enum.Material.Neon
-    marker.Color       = cfg.colorLand
+    marker.Anchored     = true
+    marker.CanCollide   = false
+    marker.CastShadow   = false
+    marker.Material     = Enum.Material.Neon
+    marker.Color        = Color3.fromRGB(255, 220, 0)
     marker.Transparency = 1
-    marker.Size        = Vector3.new(5, 0.15, 5)
-    marker.Shape       = Enum.PartType.Cylinder
-    marker.Parent      = curveFolder
+    marker.Size         = Vector3.new(5, 0.15, 5)
+    marker.Shape        = Enum.PartType.Cylinder
+    marker.Parent       = curveFolder
 
     local function Simulate(startPos, startVel)
         local pts     = {}
         local pos     = startPos
         local vel     = startVel
-        local gdt     = Vector3.new(0, -cfg.gravity * cfg.dt, 0)
+        local gravity = Vector3.new(0, -196.2 * simDt, 0)
+        local maxSteps = math.floor(8 / simDt)
         local bounces = 0
-        local maxSteps = math.floor(Settings.PredictorMaxTime / cfg.dt)
 
         for step = 1, maxSteps do
-            vel = (vel + gdt) * cfg.airResistance
-            pos = pos + vel * cfg.dt
+            vel = (vel + gravity) * 0.99
+            pos = pos + vel * simDt
             pts[step] = pos
 
-            if pos.Y <= cfg.groundHeight and vel.Y < 0 then
-                pos = Vector3.new(pos.X, cfg.groundHeight, pos.Z)
-                vel = Vector3.new(vel.X * cfg.friction, -vel.Y * cfg.bounceDamping, vel.Z * cfg.friction)
+            if pos.Y <= 0 and vel.Y < 0 then
+                pos = Vector3.new(pos.X, 0, pos.Z)
+                vel = Vector3.new(vel.X * 0.85, -vel.Y * 0.68, vel.Z * 0.85)
                 bounces += 1
                 if bounces >= 3 or vel.Magnitude < 2 then break end
             end
+
             if vel.Magnitude < 0.5 then break end
         end
         return pts
@@ -760,15 +545,16 @@ local function StartPredictor()
     local frame = 0
     predConn = RunService.Heartbeat:Connect(function()
         frame += 1
+        if frame % updateEvery ~= 0 then return end
 
-        -- ★ Частота обновления из настроек
-        local updateRate = Settings.PerformanceMode
-            and math.max(Settings.PredictorUpdateRate, 5)
-            or Settings.PredictorUpdateRate
-        if frame % updateRate ~= 0 then return end
+        if not Settings.EnableVisualEffects then
+            for _, s in ipairs(segs) do s.Transparency = 1 end
+            marker.Transparency = 1
+            return
+        end
 
         local ball = FindBall()
-        if not ball or ball.AssemblyLinearVelocity.Magnitude < Settings.PredictorMinSpeed then
+        if not ball or ball.AssemblyLinearVelocity.Magnitude < 3 then
             for _, s in ipairs(segs) do s.Transparency = 1 end
             marker.Transparency = 1
             return
@@ -782,428 +568,238 @@ local function StartPredictor()
             return
         end
 
-        -- ★ Линия траектории — учитываем настройку
-        local segCount = math.min(#segs, Settings.PredictorSegments)
         local step = (n - 1) / segCount
-
-        for i = 1, #segs do
-            if i > segCount or not Settings.PredictorLine then
-                segs[i].Transparency = 1
+        for i = 1, segCount do
+            local idx  = math.floor((i - 1) * step) + 1
+            local idx2 = math.min(idx + 1, n)
+            local p1, p2 = pts[idx], pts[idx2]
+            local dist = (p2 - p1).Magnitude
+            if dist > 0.01 then
+                local t = i / segCount
+                -- Градиент: бирюзовый → красный
+                local r = math.floor(0 * (1 - t) + 255 * t)
+                local g = math.floor(220 * (1 - t) + 80 * t)
+                local b = math.floor(255 * (1 - t) + 80 * t)
+                segs[i].Color        = Color3.fromRGB(r, g, b)
+                segs[i].Size         = Vector3.new(0.25 - t * 0.1, 0.25 - t * 0.1, dist)
+                segs[i].CFrame       = CFrame.lookAt((p1 + p2) * 0.5, p2)
+                segs[i].Transparency = 0.25 + t * 0.3
             else
-                local idx  = math.floor((i - 1) * step) + 1
-                local idx2 = math.min(idx + 1, n)
-                local p1, p2 = pts[idx], pts[idx2]
-                local dist = (p2 - p1).Magnitude
-                if dist > 0.01 then
-                    segs[i].Size   = Vector3.new(0.25, 0.25, dist)
-                    segs[i].CFrame = CFrame.lookAt((p1 + p2) * 0.5, p2)
-                    -- ★ Градиент прозрачности
-                    if Settings.PredictorGradient then
-                        segs[i].Transparency = cfg.segmentTrans + (i / segCount) * 0.35
-                    else
-                        segs[i].Transparency = cfg.segmentTrans
-                    end
-                else
-                    segs[i].Transparency = 1
-                end
+                segs[i].Transparency = 1
             end
         end
 
-        -- ★ Метка приземления — учитываем настройку
-        if not Settings.PredictorLandMark then
-            marker.Transparency = 1
-        else
-            local landPos = nil
-            for i = 2, n do
-                if pts[i].Y <= cfg.groundHeight + 0.3 and pts[i-1].Y > cfg.groundHeight + 0.3 then
-                    local dy = pts[i].Y - pts[i-1].Y
-                    if math.abs(dy) > 0.001 then
-                        local t = math.clamp((cfg.groundHeight - pts[i-1].Y) / dy, 0, 1)
-                        landPos = pts[i-1]:Lerp(pts[i], t)
-                    end
-                    break
+        -- Маркер приземления
+        local landPos = nil
+        for i = 2, n do
+            if pts[i].Y <= 0.3 and pts[i - 1].Y > 0.3 then
+                local dy = pts[i].Y - pts[i - 1].Y
+                if math.abs(dy) > 0.001 then
+                    local t = math.clamp(-pts[i - 1].Y / dy, 0, 1)
+                    landPos = pts[i - 1]:Lerp(pts[i], t)
                 end
+                break
             end
+        end
 
-            if landPos then
-                -- ★ Пульсация — учитываем настройку
-                local size
-                if Settings.PredictorPulse then
-                    size = 5 + math.sin(tick() * 4) * 1.5
-                else
-                    size = 5
-                end
-                marker.Size        = Vector3.new(size, 0.15, size)
-                marker.CFrame      = CFrame.new(landPos + Vector3.new(0, 0.1, 0)) * CFrame.Angles(0, 0, math.pi / 2)
-                marker.Transparency = 0.35
-            else
-                marker.Transparency = 1
-            end
+        if landPos then
+            local pulse = 5 + math.sin(tick() * 4) * 1.5
+            marker.Size         = Vector3.new(pulse, 0.15, pulse)
+            marker.CFrame       = CFrame.new(landPos + Vector3.new(0, 0.1, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+            marker.Transparency = 0.3
+        else
+            marker.Transparency = 1
         end
     end)
 
-    Notify("✅ Предиктор", "activity", "Предиктор траектории включён", 2)
+    SafeNotify({
+        Title = "✅ Predictor",
+        Icon = "activity",
+        Content = string.format("Сегментов: %d, обновление: каждые %d кадров", segCount, updateEvery),
+        Duration = 3,
+    })
 end
 
 local function StopPredictor()
     if predConn then predConn:Disconnect(); predConn = nil end
-    if curveFolder then
-        pcall(function() curveFolder:Destroy() end)
-        curveFolder = nil
-    end
-    Notify("❌ Предиктор", "activity", "Предиктор выключен", 2)
+    if curveFolder then pcall(function() curveFolder:Destroy() end); curveFolder = nil end
 end
 
--- ============================================================
--- WindUI — СОЗДАНИЕ ИНТЕРФЕЙСА
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
+-- UI — МИНИМАЛЬНЫЙ И ЧИСТЫЙ
+-- ═══════════════════════════════════════════════════════════
 
 WindUI = loadstring(game:HttpGet(
     "https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/dist/main.lua"
 ))()
 
 local Window = WindUI:CreateWindow({
-    Title  = "RSS — GK Hub v2",
+    Title  = "RSS — GK Hub",
     Icon   = "shield",
-    Author = "7v7 Improved v2.0",
+    Author = "7v7 Smart Edition",
     Folder = "RSS_GK",
 })
 
--- ============================================================
--- ВКЛАДКА: REACH & HITBOX
--- ============================================================
+-- ──────── ВКЛАДКА: REACH ────────
 
-local ReachTab     = Window:Tab({ Title = "Reach & Hitbox", Icon = "maximize" })
+local ReachTab     = Window:Tab({ Title = "Reach", Icon = "maximize" })
 local ReachSection = ReachTab:Section({ Title = "Хитбокс вратаря" })
 
 ReachSection:Toggle({
     Title    = "Enable Reach",
-    Desc     = "Расширяет зону касания мяча (с умной сортировкой)",
+    Desc     = "Расширяет зону касания мяча. Количество касаний подбирается автоматически.",
     Default  = false,
-    Callback = function(v) if v then EnableReach() else DisableReach() end end
+    Callback = function(v)
+        if v then EnableReach() else DisableReach() end
+    end
 })
 
 ReachSection:Toggle({
     Title    = "Show Hitbox",
-    Desc     = "Показать визуальный бокс (зависит от настроек эффектов)",
+    Desc     = "Визуализация хитбокса с пульсацией",
     Default  = false,
-    Callback = function(v) UpdateHitbox(v) end
+    Callback = function(v)
+        ShowHitbox = v
+        UpdateHitbox()
+    end
 })
 
 ReachTab:Space()
 local SizeSection = ReachTab:Section({ Title = "Размер хитбокса" })
 
 SizeSection:Slider({
-    Title    = "Size X",
-    Step     = 1,
-    Value    = { Min = 1, Max = 60, Default = 10 },
+    Title = "Size X", Step = 1,
+    Value = { Min = 1, Max = 60, Default = 10 },
     Callback = function(v)
         HitboxSize = Vector3.new(v, HitboxSize.Y, HitboxSize.Z)
-        UpdateHitbox(IsReachEnabled)
+        UpdateHitbox()
     end
 })
+
 SizeSection:Slider({
-    Title    = "Size Y",
-    Step     = 1,
-    Value    = { Min = 1, Max = 60, Default = 10 },
+    Title = "Size Y", Step = 1,
+    Value = { Min = 1, Max = 60, Default = 10 },
     Callback = function(v)
         HitboxSize = Vector3.new(HitboxSize.X, v, HitboxSize.Z)
-        UpdateHitbox(IsReachEnabled)
+        UpdateHitbox()
     end
 })
+
 SizeSection:Slider({
-    Title    = "Size Z",
-    Step     = 1,
-    Value    = { Min = 1, Max = 60, Default = 10 },
+    Title = "Size Z", Step = 1,
+    Value = { Min = 1, Max = 60, Default = 10 },
     Callback = function(v)
         HitboxSize = Vector3.new(HitboxSize.X, HitboxSize.Y, v)
-        UpdateHitbox(IsReachEnabled)
+        UpdateHitbox()
     end
 })
 
--- ============================================================
--- ВКЛАДКА: GK FEATURES
--- ============================================================
+-- ──────── ВКЛАДКА: GK FEATURES ────────
 
 local GkTab      = Window:Tab({ Title = "GK Features", Icon = "shield-check" })
-local PickSection = GkTab:Section({ Title = "Выбор позиции" })
+local JoinSection = GkTab:Section({ Title = "Выбор позиции" })
 
-PickSection:Dropdown({
+JoinSection:Dropdown({
     Title    = "Встать вратарём",
-    Desc     = "Используй когда нет вратаря в команде",
+    Desc     = "Отправляет запрос на позицию GK",
     Values   = { "Home GK", "Away GK" },
     Value    = nil,
     Multi    = false,
     AllowNone = true,
     Callback = function(option)
         if not option or option == "" then return end
-        if not isInFansTeam() then
-            Notify("Ошибка", "ban", "Сначала выйди из команды!", 4)
-            return
-        end
         local color = option == "Home GK" and BrickColor.new(23) or BrickColor.new(141)
         pcall(function()
             ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("TeamChange"):FireServer(color, "Goalie")
         end)
-        Notify("✅ Готово", "check", "Позиция: " .. option, 3)
-    end
-})
-
-PickSection:Dropdown({
-    Title    = "Auto Pick Priority",
-    Values   = { "Home First", "Away First" },
-    Value    = "Home First",
-    Multi    = false,
-    AllowNone = false,
-    Callback = function(v)
-        if v and v ~= "" then AutoPickPriority = v end
-    end
-})
-
-PickSection:Slider({
-    Title    = "Auto Pick Interval (sec)",
-    Step     = 0.05,
-    Value    = { Min = 0.10, Max = 2, Default = 0.35 },
-    Callback = function(v) AutoPickInterval = v end
-})
-
-PickSection:Toggle({
-    Title    = "Auto Pick GK",
-    Desc     = "Пока ты в Fans: быстро пытается занять свободного GK",
-    Default  = false,
-    Callback = function(v)
-        if v then
-            if not isInFansTeam() then
-                Notify("Ошибка", "ban", "Сначала выйди из команды!", 4)
-                return
-            end
-            StartAutoPickGK()
-        else
-            StopAutoPickGK()
-        end
+        SafeNotify({ Title = "✅", Icon = "check", Content = option, Duration = 3 })
     end
 })
 
 GkTab:Space()
-local DiveSection = GkTab:Section({ Title = "Auto Dive (7v7 v2)" })
+local DiveSection = GkTab:Section({ Title = "Auto Dive" })
 
 DiveSection:Toggle({
     Title    = "Auto Dive",
-    Desc     = "Улучшенный дайв: мульти-фреймовая детекция, настраиваемая чувствительность",
+    Desc     = "Полностью автоматический дайв. Чувствительность, дистанция, кулдаун — всё адаптивно.",
     Default  = false,
-    Callback = function(v) if v then StartAutoDive() else StopAutoDive() end end
+    Callback = function(v)
+        if v then StartAutoDive() else StopAutoDive() end
+    end
 })
 
--- ============================================================
--- ВКЛАДКА: BALL PREDICTOR
--- ============================================================
+-- ──────── ВКЛАДКА: PREDICTOR ────────
 
-local PredTab     = Window:Tab({ Title = "Ball Predictor", Icon = "activity" })
-local PredSection = PredTab:Section({ Title = "Предсказание траектории" })
+local PredTab     = Window:Tab({ Title = "Predictor", Icon = "activity" })
+local PredSection = PredTab:Section({ Title = "Траектория мяча" })
 
 PredSection:Toggle({
-    Title    = "Enable Predictor",
-    Desc     = "Показывает куда полетит мяч (настройки эффектов в разделе Настройки)",
+    Title    = "Ball Predictor",
+    Desc     = "Предсказание траектории с учётом spin, гравитации и отскоков. Настройки автоматические по FPS.",
     Default  = false,
-    Callback = function(v) if v then StartPredictor() else StopPredictor() end end
+    Callback = function(v)
+        if v then StartPredictor() else StopPredictor() end
+    end
 })
 
--- ============================================================
--- ⭐ ВКЛАДКА: НАСТРОЙКИ (НОВАЯ)
--- ============================================================
+-- ──────── ВКЛАДКА: SETTINGS ────────
 
-local SettingsTab = Window:Tab({ Title = "Настройки", Icon = "settings" })
-
--- --- Уведомления ---
-local NotifSection = SettingsTab:Section({ Title = "🔔 Уведомления" })
-
-NotifSection:Toggle({
-    Title    = "Показывать уведомления",
-    Desc     = "Вкл/выкл всплывающие уведомления скрипта",
-    Default  = Settings.Notifications,
-    Callback = function(v) Settings.Notifications = v end
-})
-
-SettingsTab:Space()
-
--- --- Визуальные эффекты ---
-local VisualSection = SettingsTab:Section({ Title = "✨ Визуальные эффекты" })
+local SettingsTab   = Window:Tab({ Title = "Settings", Icon = "settings" })
+local VisualSection = SettingsTab:Section({ Title = "Общие" })
 
 VisualSection:Toggle({
-    Title    = "Подсветка хитбокса",
-    Desc     = "Зелёный бокс вокруг персонажа (при включённом Reach + Show)",
-    Default  = Settings.HitboxGlow,
+    Title    = "Visual Effects",
+    Desc     = "Все визуальные эффекты (хитбокс, предиктор, маркер)",
+    Default  = true,
     Callback = function(v)
-        Settings.HitboxGlow = v
-        UpdateHitbox(IsReachEnabled)
+        Settings.EnableVisualEffects = v
+        if not v then UpdateHitbox() end
     end
 })
 
 VisualSection:Toggle({
-    Title    = "Линия траектории",
-    Desc     = "Неоновая линия предсказания полёта мяча",
-    Default  = Settings.PredictorLine,
-    Callback = function(v) Settings.PredictorLine = v end
-})
-
-VisualSection:Toggle({
-    Title    = "Метка приземления",
-    Desc     = "Жёлтый круг в месте приземления мяча",
-    Default  = Settings.PredictorLandMark,
-    Callback = function(v) Settings.PredictorLandMark = v end
-})
-
-VisualSection:Toggle({
-    Title    = "Пульсация метки",
-    Desc     = "Анимация пульсации круга приземления",
-    Default  = Settings.PredictorPulse,
-    Callback = function(v) Settings.PredictorPulse = v end
-})
-
-VisualSection:Toggle({
-    Title    = "Градиент линии",
-    Desc     = "Линия предиктора плавно затухает к концу",
-    Default  = Settings.PredictorGradient,
-    Callback = function(v) Settings.PredictorGradient = v end
-})
-
-SettingsTab:Space()
-
--- --- Настройки дайва ---
-local DiveSettSection = SettingsTab:Section({ Title = "🧤 Настройки дайва" })
-
-DiveSettSection:Slider({
-    Title    = "Чувствительность дайва",
-    Desc     = "Выше = раньше реагирует (0.5 — спокойный, 2.0 — агрессивный)",
-    Step     = 0.1,
-    Value    = { Min = 0.5, Max = 2.0, Default = Settings.DiveSensitivity },
-    Callback = function(v) Settings.DiveSensitivity = v end
-})
-
-DiveSettSection:Toggle({
-    Title    = "Авто-прыжок",
-    Desc     = "Автоматический прыжок при высоком мяче",
-    Default  = Settings.DiveAutoJump,
-    Callback = function(v) Settings.DiveAutoJump = v end
-})
-
-DiveSettSection:Toggle({
-    Title    = "Реакция на центр",
-    Desc     = "Реагировать когда мяч летит по центру (не влево/вправо)",
-    Default  = Settings.DiveCenterReaction,
-    Callback = function(v) Settings.DiveCenterReaction = v end
-})
-
-DiveSettSection:Toggle({
-    Title    = "Агрессивный режим",
-    Desc     = "Увеличивает дистанцию реакции при быстром мяче",
-    Default  = Settings.DiveAggressiveMode,
-    Callback = function(v) Settings.DiveAggressiveMode = v end
-})
-
-SettingsTab:Space()
-
--- --- Настройки Reach ---
-local ReachSettSection = SettingsTab:Section({ Title = "📏 Настройки Reach" })
-
-ReachSettSection:Slider({
-    Title    = "Количество касаний",
-    Desc     = "Сколько частей тела касаются мяча (1–10)",
-    Step     = 1,
-    Value    = { Min = 1, Max = 10, Default = Settings.ReachTouchCount },
-    Callback = function(v) Settings.ReachTouchCount = v end
-})
-
-ReachSettSection:Toggle({
-    Title    = "Velocity Boost",
-    Desc     = "Увеличивать рич при быстром мяче",
-    Default  = Settings.ReachVelocityBoost,
-    Callback = function(v) Settings.ReachVelocityBoost = v end
-})
-
-ReachSettSection:Toggle({
-    Title    = "Двойной Touch",
-    Desc     = "Двойное касание для лучшей регистрации",
-    Default  = Settings.ReachDoubleTap,
-    Callback = function(v) Settings.ReachDoubleTap = v end
-})
-
-SettingsTab:Space()
-
--- --- Производительность ---
-local PerfSection = SettingsTab:Section({ Title = "⚡ Производительность" })
-
-PerfSection:Toggle({
-    Title    = "Режим производительности",
-    Desc     = "Пропускает кадры для экономии FPS (может ухудшить реакцию)",
-    Default  = Settings.PerformanceMode,
-    Callback = function(v) Settings.PerformanceMode = v end
-})
-
-PerfSection:Slider({
-    Title    = "Частота обновления предиктора",
-    Desc     = "Каждые N кадров (меньше = точнее, но тяжелее)",
-    Step     = 1,
-    Value    = { Min = 1, Max = 10, Default = Settings.PredictorUpdateRate },
-    Callback = function(v) Settings.PredictorUpdateRate = v end
-})
-
-PerfSection:Toggle({
-    Title    = "Авто-восстановление при респавне",
-    Desc     = "Перезапускать дайв/рич/авто-пик после респавна",
-    Default  = Settings.AutoReconnect,
-    Callback = function(v) Settings.AutoReconnect = v end
-})
-
-SettingsTab:Space()
-
--- --- Сброс ---
-local ResetSection = SettingsTab:Section({ Title = "🔄 Сброс настроек" })
-
-ResetSection:Toggle({
-    Title    = "⚠️ Сбросить ВСЕ настройки",
-    Desc     = "Включи чтобы вернуть все значения по умолчанию (затем выключи)",
-    Default  = false,
+    Title    = "Notifications",
+    Desc     = "Уведомления хаба",
+    Default  = true,
     Callback = function(v)
-        if v then
-            for k, def in pairs(DefaultSettings) do
-                Settings[k] = def
-            end
-            Notify("🔄 Сброс", "refresh-cw", "Все настройки сброшены к значениям по умолчанию!", 4)
-            UpdateHitbox(IsReachEnabled)
-        end
+        Settings.EnableNotifications = v
     end
 })
 
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 -- ИНИЦИАЛИЗАЦИЯ
--- ============================================================
+-- ═══════════════════════════════════════════════════════════
 
 CreateHitbox()
-UpdateHitbox(false)
+UpdateHitbox()
 
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1.5)
-    cachedBall      = nil
-    velocityHistory = {}
+    cachedBall = nil
 
     CreateHitbox()
-    UpdateHitbox(IsReachEnabled)
+    UpdateHitbox()
 
-    if not Settings.AutoReconnect then return end
+    -- Перезапуск Reach после респавна
+    if IsReachEnabled then
+        if ReachConn then ReachConn:Disconnect(); ReachConn = nil end
+        if hitboxPulseConn then hitboxPulseConn:Disconnect(); hitboxPulseConn = nil end
+        EnableReach()
+    end
 
+    -- Перезапуск Auto Dive после респавна
     if DiveActive then
         if DiveConn then DiveConn:Disconnect(); DiveConn = nil end
         task.wait(0.5)
         StartAutoDive()
     end
-
-    if AutoPickEnabled then
-        StopAutoPickGK()
-        task.wait(0.2)
-        StartAutoPickGK()
-    end
 end)
 
-Notify("✅ RSS GK Hub v2.0", "shield", "Загружен! Все функции улучшены. Настройки → последняя вкладка.", 5)
-print("⚽ RSS GK Hub v2.0 (Improved + Settings) загружен!")
+SafeNotify({
+    Title    = "✅ RSS GK Hub",
+    Icon     = "shield",
+    Content  = "Загружен! Все параметры настраиваются автоматически.",
+    Duration = 5,
+})
+
+print("[RSS GK] Smart Edition загружен!")
