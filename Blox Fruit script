@@ -23,8 +23,7 @@ local ReachConn      = nil
 local RSSHitbox      = nil
 
 local DiveConn       = nil
-local DIVE_DIST      = 16     -- увеличен для 7v7
-local DIVE_COOLDOWN  = 0.55   -- чуть быстрее для 7v7
+local DiveActive     = false   -- отдельный флаг для перезапуска при респавне
 local lastDiveTime   = 0
 
 local AutoPickEnabled   = false
@@ -34,24 +33,38 @@ local AutoPickLoopTask  = nil
 local lastPickAttempt   = 0
 local PICK_COOLDOWN     = 0.35
 
+local cachedBall        = nil   -- кеш мяча для быстрого поиска
+
 -- ============================================================
 -- ВСПОМОГАТЕЛЬНЫЕ
 -- ============================================================
 
 local function GetRoot()
-    return LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart")
 end
 
 local function FindBall()
-    for _, name in ipairs({"ball", "TPS", "PSoccerBall"}) do
+    -- быстрая проверка кешированного мяча
+    if cachedBall and cachedBall.Parent and cachedBall:IsA("BasePart") then
+        return cachedBall
+    end
+    cachedBall = nil
+
+    for _, name in ipairs({"ball", "TPS", "PSoccerBall", "Soccer Ball", "Football", "SoccerBall"}) do
         local b = Workspace:FindFirstChild(name, true)
-        if b and b:IsA("BasePart") then return b end
+        if b and b:IsA("BasePart") then
+            cachedBall = b
+            return b
+        end
     end
     return nil
 end
 
 local function isInFansTeam()
-    return LocalPlayer.Team == nil or LocalPlayer.Team.Name == "Fans"
+    local team = LocalPlayer.Team
+    return team == nil or team.Name == "Fans" or team.Name == "Spectators"
 end
 
 local function GetTeamChangeRemote()
@@ -63,30 +76,53 @@ end
 local function ReadStringValue(obj)
     if not obj then return nil end
     if typeof(obj) == "string" then return obj end
-    if typeof(obj) == "Instance" and obj:IsA("StringValue") then
-        return obj.Value
+    if typeof(obj) == "Instance" then
+        if obj:IsA("StringValue") then return obj.Value end
+        if obj:IsA("IntValue") or obj:IsA("NumberValue") then return tostring(obj.Value) end
+    end
+    return nil
+end
+
+-- Вспомогательная функция для поиска роли в объекте и его детях
+local function SearchRoleInObject(obj, keys)
+    if not obj then return nil end
+    for _, k in ipairs(keys) do
+        -- Сначала проверяем атрибуты (если Instance)
+        if typeof(obj) == "Instance" then
+            local attr = obj:GetAttribute(k)
+            if typeof(attr) == "string" and attr ~= "" then return attr end
+        end
+        -- Затем проверяем дочерние объекты
+        if typeof(obj) == "Instance" then
+            local v = ReadStringValue(obj:FindFirstChild(k))
+            if v and v ~= "" then return v end
+        end
     end
     return nil
 end
 
 local function GetPlayerRoleString(plr)
     if not plr then return nil end
-    local keys = {"Position", "Role", "POS", "Pos", "Class"}
+    local keys = {"Position", "Role", "POS", "Pos", "Class", "GameRole", "TeamRole"}
+
+    -- Поиск в атрибутах игрока
     for _, k in ipairs(keys) do
         local attr = plr:GetAttribute(k)
         if typeof(attr) == "string" and attr ~= "" then return attr end
     end
+
+    -- Поиск в leaderstats
     local ls = plr:FindFirstChild("leaderstats")
-    if ls then
-        for _, k in ipairs(keys) do
-            local v = ReadStringValue(ls:FindFirstChild(k))
-            if v and v ~= "" then return v end
-        end
-    end
+    local result = SearchRoleInObject(ls, keys)
+    if result then return result end
+
+    -- Поиск в дочерних объектах игрока
     for _, k in ipairs(keys) do
         local v = ReadStringValue(plr:FindFirstChild(k))
         if v and v ~= "" then return v end
     end
+
+    -- Поиск в персонаже
     local char = plr.Character
     if char then
         for _, k in ipairs(keys) do
@@ -97,10 +133,19 @@ local function GetPlayerRoleString(plr)
     return nil
 end
 
+local GK_PATTERNS = {
+    "goalie", "gk", "goalkeeper", "keeper", "вратарь", "голкипер"
+}
+
 local function IsGoalkeeperRole(role)
     if not role or role == "" then return false end
-    role = string.lower(role)
-    return role == "goalie" or role == "gk" or role == "goalkeeper" or role:find("goalie", 1, true) ~= nil
+    local lower = string.lower(role)
+    for _, pattern in ipairs(GK_PATTERNS) do
+        if lower == pattern or lower:find(pattern, 1, true) ~= nil then
+            return true
+        end
+    end
+    return false
 end
 
 local function IsPlayerGoalkeeper(plr)
@@ -115,7 +160,7 @@ local function IsGKSlotFree(option)
     local targetColor = GetTeamBrickColor(option)
     local anyRoleInfo = false
     for _, plr in ipairs(Players:GetPlayers()) do
-        if plr.TeamColor == targetColor then
+        if plr ~= LocalPlayer and plr.TeamColor == targetColor then
             local role = GetPlayerRoleString(plr)
             if role and role ~= "" then
                 anyRoleInfo = true
@@ -140,14 +185,20 @@ local function TryJoinGK(option)
     local color = GetTeamBrickColor(option)
     local ok = pcall(function() remote:FireServer(color, "Goalie") end)
     if not ok then return false end
-    task.wait(0.2)
+    -- Даём серверу время обработать запрос, проверяем несколько раз
+    for _ = 1, 3 do
+        task.wait(0.15)
+        if not isInFansTeam() and IsLocalPlayerGoalkeeper() then
+            return true
+        end
+    end
     return (not isInFansTeam()) and IsLocalPlayerGoalkeeper()
 end
 
 local function StopAutoPickGK()
     AutoPickEnabled = false
     if AutoPickLoopTask then
-        task.cancel(AutoPickLoopTask)
+        pcall(task.cancel, AutoPickLoopTask)
         AutoPickLoopTask = nil
     end
 end
@@ -178,7 +229,13 @@ end
 -- ============================================================
 
 local function CreateHitbox()
-    if RSSHitbox then RSSHitbox:Destroy() end
+    if RSSHitbox then
+        pcall(function() RSSHitbox:Destroy() end)
+        RSSHitbox = nil
+    end
+    local root = GetRoot()
+    if not root then return end
+
     RSSHitbox = Instance.new("BoxHandleAdornment")
     RSSHitbox.Name         = "RSSHitbox"
     RSSHitbox.AlwaysOnTop  = false
@@ -186,14 +243,16 @@ local function CreateHitbox()
     RSSHitbox.Color3       = Color3.fromRGB(0, 255, 100)
     RSSHitbox.Transparency = 1
     RSSHitbox.Size         = HitboxSize
-    RSSHitbox.Adornee      = GetRoot()
+    RSSHitbox.Adornee      = root
     RSSHitbox.Parent       = Workspace.Terrain
 end
 
 local function UpdateHitbox(show)
     if not RSSHitbox then return end
+    local root = GetRoot()
+    if not root then return end
     RSSHitbox.Size        = HitboxSize
-    RSSHitbox.Adornee     = GetRoot()
+    RSSHitbox.Adornee     = root
     RSSHitbox.Transparency = (show and IsReachEnabled) and 0.4 or 1
 end
 
@@ -205,15 +264,31 @@ local function ReachLoop()
     local ball = FindBall()
     if not ball then return end
 
+    local char = LocalPlayer.Character
+    if not char then return end
+
+    local ballPos = ball.Position
     local reach = math.max(HitboxSize.X, HitboxSize.Y, HitboxSize.Z) / 2
-    if (ball.Position - root.Position).Magnitude <= reach then
-        for _, part in ipairs(LocalPlayer.Character:GetChildren()) do
+    local distToBall = (ballPos - root.Position).Magnitude
+
+    if distToBall <= reach then
+        -- Собираем части тела и сортируем по расстоянию к мячу (ближайшие первые)
+        local parts = {}
+        for _, part in ipairs(char:GetChildren()) do
             if part:IsA("BasePart") then
-                -- УЛУЧШЕНО: двойной touch + дополнительный цикл для 7v7
-                pcall(firetouchinterest, part, ball, 0)
-                pcall(firetouchinterest, part, ball, 1)
-                pcall(firetouchinterest, part, ball, 0)
+                table.insert(parts, part)
             end
+        end
+        table.sort(parts, function(a, b)
+            return (a.Position - ballPos).Magnitude < (b.Position - ballPos).Magnitude
+        end)
+
+        -- Touch ближайшими частями для лучшего результата
+        for i, part in ipairs(parts) do
+            if i > 5 then break end -- только 5 ближайших частей
+            pcall(firetouchinterest, part, ball, 0)
+            pcall(firetouchinterest, part, ball, 1)
+            pcall(firetouchinterest, part, ball, 0)
         end
     end
 end
@@ -232,70 +307,127 @@ local function DisableReach()
 end
 
 -- ============================================================
--- AUTO DIVE — УЛУЧШЕН ДЛЯ 7v7
+-- AUTO DIVE — ПОЛНОСТЬЮ ПЕРЕРАБОТАН ДЛЯ 7v7
 -- ============================================================
 
--- УЛУЧШЕНО: предсказание дальше (0.5 сек вместо 0.3) для 7v7
+-- Предсказание позиции мяча через dt секунд
 local function PredictBallPos(ball, dt)
-    local vel     = ball.AssemblyLinearVelocity
-    local pos     = ball.Position
-    local gravity = Vector3.new(0, -196.2, 0)
-    return pos + vel * dt + gravity * (dt * dt * 0.5)
+    local vel = ball.AssemblyLinearVelocity
+    local pos = ball.Position
+    local g   = Vector3.new(0, -196.2, 0)
+    return pos + vel * dt + g * (dt * dt * 0.5)
 end
 
 local function GetDiveButtons()
-    local ok1, l1, r1 = pcall(function()
-        local gui   = LocalPlayer:FindFirstChild("PlayerGui")
-        local ctrl  = gui and gui:FindFirstChild("MobileCTRL")
+    local gui = LocalPlayer:FindFirstChild("PlayerGui")
+    if not gui then return nil, nil end
+
+    local leftBtn, rightBtn
+    local ok1 = pcall(function()
+        local ctrl  = gui:FindFirstChild("MobileCTRL")
         local frame = ctrl and ctrl:FindFirstChild("TouchControlFrame")
         local jump  = frame and frame:FindFirstChild("JumpButton")
-        if not jump then return nil, nil end
-        return jump:FindFirstChild("LeftDive"), jump:FindFirstChild("RightDive")
-    end)
-    if ok1 and l1 and r1 then return l1, r1 end
-
-    local ok2, l2, r2 = pcall(function()
-        local gui = LocalPlayer:FindFirstChild("PlayerGui")
-        if not gui then return nil, nil end
-        local leftBtn, rightBtn
-        for _, obj in ipairs(gui:GetDescendants()) do
-            if obj.Name == "LeftDive"  then leftBtn  = obj end
-            if obj.Name == "RightDive" then rightBtn = obj end
+        if jump then
+            leftBtn  = jump:FindFirstChild("LeftDive")
+            rightBtn = jump:FindFirstChild("RightDive")
         end
-        return leftBtn, rightBtn
     end)
-    if ok2 and l2 and r2 then return l2, r2 end
+    if ok1 and leftBtn and rightBtn then return leftBtn, rightBtn end
 
-    return nil, nil
+    leftBtn, rightBtn = nil, nil
+    pcall(function()
+        for _, obj in ipairs(gui:GetDescendants()) do
+            if obj.Name == "LeftDive" and not leftBtn then leftBtn = obj end
+            if obj.Name == "RightDive" and not rightBtn then rightBtn = obj end
+            if leftBtn and rightBtn then break end
+        end
+    end)
+    return leftBtn, rightBtn
 end
 
 local function FireButton(btn)
     if not btn then return end
     local ok, conns = pcall(getconnections, btn.MouseButton1Click)
-    if ok and conns and #conns > 0 then
-        pcall(function() conns[1]:Fire() end)
-        return
+    if ok and conns then
+        for _, conn in ipairs(conns) do
+            pcall(function() conn:Fire() end)
+        end
+        if #conns > 0 then return end
     end
     pcall(function() btn.MouseButton1Click:Fire() end)
 end
 
+local function TryJump()
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum and hum:GetState() ~= Enum.HumanoidStateType.Jumping
+          and hum:GetState() ~= Enum.HumanoidStateType.Freefall then
+        hum.Jump = true
+    end
+end
+
+-- Определяет: это удар (шот) или просто катящийся мяч?
+local function IsShot(ball, hrp)
+    local vel    = ball.AssemblyLinearVelocity
+    local velMag = vel.Magnitude
+
+    -- Слишком медленный мяч — это не удар
+    if velMag < 12 then return false end
+
+    -- Горизонтальная скорость (без Y)
+    local horizVel = Vector3.new(vel.X, 0, vel.Z)
+    local horizMag = horizVel.Magnitude
+
+    -- Если мяч по земле и медленнее 20 — это просто катится
+    local ballHeight = ball.Position.Y - hrp.Position.Y
+    if ballHeight < 1.5 and horizMag < 20 then return false end
+
+    -- Направление мяча к вратарю
+    local toGK    = (hrp.Position - ball.Position)
+    local toGKDir = Vector3.new(toGK.X, 0, toGK.Z)
+    if toGKDir.Magnitude < 0.1 then return true end -- мяч прямо на нас
+    toGKDir = toGKDir.Unit
+
+    local velDir = Vector3.new(vel.X, 0, vel.Z)
+    if velDir.Magnitude < 0.1 then return false end
+    velDir = velDir.Unit
+
+    -- Мяч должен лететь в нашу сторону (dot > 0.15)
+    local dot = toGKDir:Dot(velDir)
+    if dot < 0.15 then return false end
+
+    return true
+end
+
+local prevBallVel    = nil
+local prevBallSpeed  = 0
+
 local function StartAutoDive()
     if DiveConn then DiveConn:Disconnect(); DiveConn = nil end
+    DiveActive   = true
+    prevBallVel  = nil
+    prevBallSpeed = 0
 
     local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-    local hrp  = char:WaitForChild("HumanoidRootPart")
+    local hrp  = char:WaitForChild("HumanoidRootPart", 5)
+    if not hrp then
+        warn("❌ HumanoidRootPart не найден!")
+        DiveActive = false
+        return
+    end
 
     local leftBtn  = nil
     local rightBtn = nil
 
     task.spawn(function()
-        for attempt = 1, 15 do
+        for attempt = 1, 20 do
             leftBtn, rightBtn = GetDiveButtons()
             if leftBtn and rightBtn then
                 print("✅ Кнопки дайва найдены с попытки #" .. attempt)
                 break
             end
-            task.wait(1)
+            task.wait(0.8)
         end
         if not leftBtn or not rightBtn then
             warn("❌ Кнопки дайва не найдены!")
@@ -304,47 +436,88 @@ local function StartAutoDive()
 
     DiveConn = RunService.Heartbeat:Connect(function()
         if not leftBtn or not rightBtn then return end
+        if not hrp or not hrp.Parent then return end
 
         local ball = FindBall()
-        if not ball then return end
+        if not ball then prevBallVel = nil; prevBallSpeed = 0; return end
+
+        local vel    = ball.AssemblyLinearVelocity
+        local velMag = vel.Magnitude
+
+        -- Детекция удара: резкий рост скорости = кто-то ударил
+        local wasKicked = false
+        if prevBallVel then
+            local speedJump = velMag - prevBallSpeed
+            local accel     = (vel - prevBallVel).Magnitude
+            if accel > 12 or speedJump > 10 then
+                wasKicked = true
+            end
+        end
+        prevBallVel   = vel
+        prevBallSpeed = velMag
+
+        -- ★ ГЛАВНЫЙ ФИЛЬТР: это удар или просто катящийся мяч?
+        if not IsShot(ball, hrp) then return end
 
         local now = tick()
-        if now - lastDiveTime < DIVE_COOLDOWN then return end
+        -- Кулдаун: 0.25 сек обычно, 0.12 сек при обнаруженном ударе
+        local cooldown = wasKicked and 0.12 or 0.25
+        if now - lastDiveTime < cooldown then return end
 
-        local dist = (ball.Position - hrp.Position).Magnitude
-        if dist > DIVE_DIST then return end
+        local ballPos = ball.Position
+        local hrpPos  = hrp.Position
+        local dist    = (ballPos - hrpPos).Magnitude
 
-        local vel = ball.AssemblyLinearVelocity
-        if vel.Magnitude < 3 then return end -- УЛУЧШЕНО: ниже порог для 7v7 (было 4)
+        -- Авто-дистанция: зависит от скорости мяча
+        -- Быстрый мяч = реагируем раньше (дальше)
+        local maxDist = math.clamp(8 + velMag * 0.25, 12, 30)
+        if dist > maxDist then return end
 
-        -- УЛУЧШЕНО: предсказание на 0.5 сек для 7v7 (мяч летит быстро)
-        local predictTime = math.clamp(dist / math.max(vel.Magnitude, 1), 0.1, 0.6)
+        -- Время до прилёта мяча к нам
+        local timeToArrive = dist / math.max(velMag, 1)
+
+        -- Предсказание: куда мяч будет когда долетит
+        local predictTime = math.clamp(timeToArrive, 0.05, 0.5)
         local predicted   = PredictBallPos(ball, predictTime)
         local localPred   = hrp.CFrame:PointToObjectSpace(predicted)
 
-        -- УЛУЧШЕНО: проверка высоты — не дайвить если мяч высоко
-        local ballHeight = ball.Position.Y - hrp.Position.Y
-        if ballHeight > 6 then return end -- мяч слишком высоко, не дайвить
+        -- Высота предсказанной точки
+        local predHeight = predicted.Y - hrpPos.Y
+        if predHeight > 8 then return end -- слишком высоко
 
         lastDiveTime = now
 
-        -- УЛУЧШЕНО: учёт горизонтального смещения для 7v7
-        local sideThreshold = 0.8 -- чуть чувствительнее
+        -- Высокий мяч: прыжок
+        if predHeight > 1.5 then
+            TryJump()
+        end
+
+        -- Порог стороны: чем быстрее мяч, тем быстрее дайвим
+        -- При очень быстром мяче дайвим почти при любом смещении
+        local sideThreshold = math.clamp(0.6 - (velMag / 200), 0.1, 0.6)
+
         if localPred.X < -sideThreshold then
             FireButton(leftBtn)
-            print("◀ Дайв влево | dist=" .. math.floor(dist) .. " vel=" .. math.floor(vel.Magnitude))
         elseif localPred.X > sideThreshold then
             FireButton(rightBtn)
-            print("▶ Дайв вправо | dist=" .. math.floor(dist) .. " vel=" .. math.floor(vel.Magnitude))
+        else
+            -- Мяч по центру — прыжок + обе кнопки
+            if velMag > 15 then
+                TryJump()
+                FireButton(leftBtn)
+                FireButton(rightBtn)
+            end
         end
-        -- если мяч по центру — не дайвить (УЛУЧШЕНО: в 7v7 центральный удар ловим руками)
     end)
 
-    print("✅ Auto Dive 7v7 ВКЛЮЧЁН | Радиус: " .. DIVE_DIST)
+    print("✅ Auto Dive 7v7 ВКЛЮЧЁН")
 end
 
 local function StopAutoDive()
+    DiveActive = false
     if DiveConn then DiveConn:Disconnect(); DiveConn = nil end
+    prevBallVel  = nil
+    prevBallSpeed = 0
     print("Auto Dive ОТКЛЮЧЁН")
 end
 
@@ -372,7 +545,10 @@ local function StartPredictor()
         colorLand     = Color3.fromRGB(255, 220, 0),
     }
 
-    if curveFolder then curveFolder:Destroy() end
+    if curveFolder then
+        pcall(function() curveFolder:Destroy() end)
+        curveFolder = nil
+    end
     curveFolder        = Instance.new("Folder")
     curveFolder.Name   = "GK_Predictor"
     curveFolder.Parent = Workspace
@@ -404,16 +580,22 @@ local function StartPredictor()
         local vel = startVel
         local gdt = Vector3.new(0, -cfg.gravity * cfg.dt, 0)
         local bounces = 0
-        for _ = 1, math.floor(cfg.maxTime / cfg.dt) do
-            vel = (vel + gdt) * (cfg.airResistance)
+        local maxSteps = math.floor(cfg.maxTime / cfg.dt)
+
+        for step = 1, maxSteps do
+            vel = (vel + gdt) * cfg.airResistance
             pos = pos + vel * cfg.dt
-            table.insert(pts, pos)
+            pts[step] = pos
+
             if pos.Y <= cfg.groundHeight and vel.Y < 0 then
                 pos = Vector3.new(pos.X, cfg.groundHeight, pos.Z)
                 vel = Vector3.new(vel.X * cfg.friction, -vel.Y * cfg.bounceDamping, vel.Z * cfg.friction)
                 bounces += 1
                 if bounces >= 3 or vel.Magnitude < 2 then break end
             end
+
+            -- Ранний выход если скорость слишком мала
+            if vel.Magnitude < 0.5 then break end
         end
         return pts
     end
@@ -432,7 +614,11 @@ local function StartPredictor()
 
         local pts = Simulate(ball.Position, ball.AssemblyLinearVelocity)
         local n   = #pts
-        if n < 2 then return end
+        if n < 2 then
+            for _, s in ipairs(segs) do s.Transparency = 1 end
+            marker.Transparency = 1
+            return
+        end
 
         local step = (n - 1) / cfg.segmentCount
         for i = 1, cfg.segmentCount do
@@ -443,7 +629,7 @@ local function StartPredictor()
             if dist > 0.01 then
                 segs[i].Size        = Vector3.new(0.25, 0.25, dist)
                 segs[i].CFrame      = CFrame.lookAt((p1 + p2) * 0.5, p2)
-                segs[i].Transparency = cfg.segmentTrans
+                segs[i].Transparency = cfg.segmentTrans + (i / cfg.segmentCount) * 0.3
             else
                 segs[i].Transparency = 1
             end
@@ -452,8 +638,11 @@ local function StartPredictor()
         local landPos = nil
         for i = 2, n do
             if pts[i].Y <= cfg.groundHeight + 0.3 and pts[i-1].Y > cfg.groundHeight + 0.3 then
-                local t = math.clamp((cfg.groundHeight - pts[i-1].Y) / (pts[i].Y - pts[i-1].Y), 0, 1)
-                landPos = pts[i-1]:Lerp(pts[i], t)
+                local dy = pts[i].Y - pts[i-1].Y
+                if math.abs(dy) > 0.001 then
+                    local t = math.clamp((cfg.groundHeight - pts[i-1].Y) / dy, 0, 1)
+                    landPos = pts[i-1]:Lerp(pts[i], t)
+                end
                 break
             end
         end
@@ -470,8 +659,11 @@ local function StartPredictor()
 end
 
 local function StopPredictor()
-    if predConn    then predConn:Disconnect(); predConn = nil end
-    if curveFolder then curveFolder:Destroy(); curveFolder = nil end
+    if predConn then predConn:Disconnect(); predConn = nil end
+    if curveFolder then
+        pcall(function() curveFolder:Destroy() end)
+        curveFolder = nil
+    end
 end
 
 -- ============================================================
@@ -580,23 +772,11 @@ PickSection:Toggle({
 })
 
 GkTab:Space()
-local DiveSection = GkTab:Section({ Title = "Auto Dive (7v7 улучшен)" })
-
-DiveSection:Slider({
-    Title = "Радиус дайва (studs)",
-    Step = 0.5, Value = { Min = 5, Max = 30, Default = 16 }, -- макс больше для 7v7
-    Callback = function(v) DIVE_DIST = v end
-})
-
-DiveSection:Slider({
-    Title = "Задержка между дайвами (сек)",
-    Step = 0.05, Value = { Min = 0.3, Max = 2, Default = 0.55 },
-    Callback = function(v) DIVE_COOLDOWN = v end
-})
+local DiveSection = GkTab:Section({ Title = "Auto Dive (7v7)" })
 
 DiveSection:Toggle({
     Title = "Auto Dive",
-    Desc  = "Умный дайв с предсказанием. Улучшен для 7v7.",
+    Desc  = "Авто-дайв с детекцией ударов. Не реагирует на катящиеся мячи. Дистанция и скорость — автоматически.",
     Default = false,
     Callback = function(v)
         if v then StartAutoDive() else StopAutoDive() end
@@ -625,13 +805,17 @@ UpdateHitbox(false)
 
 LocalPlayer.CharacterAdded:Connect(function()
     task.wait(1.5)
+    cachedBall = nil -- сбрасываем кеш мяча при респавне
+
     CreateHitbox()
     UpdateHitbox(IsReachEnabled)
-    if DiveConn then
-        StopAutoDive()
+
+    if DiveActive then
+        if DiveConn then DiveConn:Disconnect(); DiveConn = nil end
         task.wait(0.5)
         StartAutoDive()
     end
+
     if AutoPickEnabled then
         StopAutoPickGK()
         task.wait(0.2)
