@@ -1,9 +1,9 @@
 --[[
-    ⚽ RSS GK HUB — 7v7 УЛУЧШЕННЫЙ v3.0 (MOBILE EDITION)
-    ★ Убран лишний мусор (Auto-Pick, бесполезные чекеры ролей).
-    ★ УЛУЧШЕННЫЙ AUTO DIVE: Теперь использует Time-To-Impact (TTI) и компенсацию ПИНГА.
-    ★ ТОЛЬКО МОБАЙЛ: Нажимает экранные кнопки интерфейса.
-    ★ Оптимизированный Reach: больше не вызывает лаги из-за спама касаний.
+    ⚽ RSS GK HUB — 7v7 УЛУЧШЕННЫЙ v3.3 (MOBILE EDITION)
+    ★ FrontDive для центральных мячей
+    ★ Ползунок дистанции: скрипт реагирует только если мяч близко
+    ★ Авто-прыжок для высоких мячей по центру
+    ★ НОВОЕ: Вкладка Нападающий — AutoShoot, AutoDeke, AutoTackle
 ]]
 
 local Players           = game:GetService("Players")
@@ -13,20 +13,17 @@ local Stats             = game:GetService("Stats")
 local LocalPlayer       = Players.LocalPlayer
 
 -- ============================================================
--- НАСТРОЙКИ (Settings)
+-- НАСТРОЙКИ
 -- ============================================================
-
 local Settings = {
-    -- Дайв
-    DiveReactionTime    = 0.40,      -- За сколько секунд до удара прыгать (0.3 - 0.5 идеально)
-    DiveAutoJump        = true,      -- Авто-прыжок при высоком мяче
-    PingCompensation    = true,      -- Учитывать пинг сервера (КРИТИЧЕСКИ ВАЖНО ДЛЯ СЕЙВОВ)
+    DiveReactionTime    = 0.40,
+    DiveAutoJump        = true,
+    PingCompensation    = true,
+    DiveMaxDistance     = 40,        -- Максимальная дистанция до мяча (в стадах) при которой скрипт реагирует
 
-    -- Рич
     HitboxSize          = Vector3.new(12, 10, 12),
     HitboxGlow          = true,
 
-    -- Предиктор
     PredictorLine       = true,
     PredictorLandMark   = true,
 }
@@ -34,17 +31,14 @@ local Settings = {
 -- ============================================================
 -- СОСТОЯНИЕ
 -- ============================================================
-local IsReachEnabled    = false
 local ReachConn         = nil
 local RSSHitbox         = nil
 local DiveConn          = nil
-local DiveActive        = false
 local lastDiveTime      = 0
 local predConn          = nil
 local curveFolder       = nil
 local cachedBall        = nil
 
--- Расширенный список названий мяча
 local BALL_NAMES = {"ball", "TPS", "PSoccerBall", "Soccer Ball", "Football", "SoccerBall", "Ball", "soccer_ball"}
 
 -- ============================================================
@@ -78,7 +72,7 @@ local function GetPing()
 end
 
 -- ============================================================
--- HITBOX / REACH (Оптимизировано, без лагов)
+-- HITBOX / REACH
 -- ============================================================
 local function UpdateHitbox(show)
     if RSSHitbox then RSSHitbox:Destroy() end
@@ -103,7 +97,6 @@ local function ReachLoop()
     local dist = (ball.Position - root.Position).Magnitude
     if dist > (Settings.HitboxSize.X / 1.5) then return end
 
-    -- Оптимизировано: касаемся только корнем и торсом, чтобы избежать багов физики
     local parts = {root, LocalPlayer.Character:FindFirstChild("Torso"), LocalPlayer.Character:FindFirstChild("UpperTorso")}
     for _, part in ipairs(parts) do
         if part then
@@ -114,88 +107,106 @@ local function ReachLoop()
 end
 
 -- ============================================================
--- AUTO DIVE (МОБИЛЬНЫЕ КНОПКИ)
+-- AUTO DIVE — v3.2
+-- Кнопки: LeftDive / RightDive / FrontDive (родитель: JumpButton)
+-- Прыжок: стандартный Humanoid.Jump для высоких мячей
 -- ============================================================
 
-local function TriggerDive(direction, isHigh)
-    -- Прыжок для высоких мячей
-    if isHigh and Settings.DiveAutoJump then
-        local hum = GetHumanoid()
-        if hum then hum.Jump = true end
-    end
-
-    -- Нажатие кнопок мобильного интерфейса
+local function FireButton(btnName)
     local gui = LocalPlayer:FindFirstChild("PlayerGui")
-    if gui then
-        pcall(function()
-            local btnName = direction == "Left" and "LeftDive" or "RightDive"
-            for _, obj in ipairs(gui:GetDescendants()) do
-                if obj.Name == btnName and obj:IsA("GuiButton") then
-                    -- Эмулируем клик для UI
-                    for _, conn in ipairs(getconnections(obj.MouseButton1Click)) do conn:Fire() end
-                    for _, conn in ipairs(getconnections(obj.TouchTap)) do conn:Fire() end
-                    break
-                end
+    if not gui then return end
+    pcall(function()
+        for _, obj in ipairs(gui:GetDescendants()) do
+            if obj.Name == btnName and obj:IsA("GuiButton") then
+                for _, conn in ipairs(getconnections(obj.MouseButton1Click)) do conn:Fire() end
+                for _, conn in ipairs(getconnections(obj.TouchTap)) do conn:Fire() end
+                break
             end
-        end)
+        end
+    end)
+end
+
+local function DoJump()
+    local hum = GetHumanoid()
+    if hum and hum:GetState() ~= Enum.HumanoidStateType.Jumping then
+        hum.Jump = true
+    end
+end
+
+local function TriggerDive(direction, isHigh)
+    if direction == "Left" then
+        if isHigh then DoJump() end
+        FireButton("LeftDive")
+    elseif direction == "Right" then
+        if isHigh then DoJump() end
+        FireButton("RightDive")
+    elseif direction == "Front" then
+        FireButton("FrontDive")
+    elseif direction == "Jump" then
+        DoJump()
     end
 end
 
 local function StartAutoDive()
     if DiveConn then DiveConn:Disconnect() end
-    DiveActive = true
 
     DiveConn = RunService.Heartbeat:Connect(function()
         local hrp = GetRoot()
         local ball = FindBall()
         if not hrp or not ball then return end
 
+        -- Проверка дистанции — ползунок в меню
+        local distance = (ball.Position - hrp.Position).Magnitude
+        if distance > Settings.DiveMaxDistance then return end
+
         local vel = ball.AssemblyLinearVelocity
         local speed = vel.Magnitude
-        if speed < 15 then return end -- Игнорируем медленные мячи
+        if speed < 15 then return end
 
-        -- Проверка направления: летит ли мяч в нашу сторону?
+        -- Летит ли мяч в нашу сторону?
         local toPlayer = hrp.Position - ball.Position
-        local dir = vel.Unit
-        if toPlayer.Unit:Dot(dir) < 0.3 then return end -- Мяч летит мимо/от нас
+        if toPlayer.Unit:Dot(vel.Unit) < 0.3 then return end
 
-        local distance = toPlayer.Magnitude
         local timeToImpact = distance / speed
-        
-        -- Высчитываем идеальное время для прыжка с учетом пинга
         local ping = GetPing()
         local reactionWindow = Settings.DiveReactionTime + ping
 
         if timeToImpact <= reactionWindow then
             local now = tick()
-            if now - lastDiveTime < 0.5 then return end -- Кулдаун пол секунды
-
-            -- Предсказываем позицию мяча в момент удара
-            local predictedPos = ball.Position + (vel * timeToImpact)
-            local localPredicted = hrp.CFrame:PointToObjectSpace(predictedPos)
-            
-            local isHigh = localPredicted.Y > 2.5
+            if now - lastDiveTime < 0.5 then return end
             lastDiveTime = now
 
+            -- Предсказываем куда прилетит мяч
+            local predictedPos = ball.Position + (vel * timeToImpact)
+            local localPredicted = hrp.CFrame:PointToObjectSpace(predictedPos)
+
+            local isHigh   = localPredicted.Y > 2.5   -- высокий мяч
+            local isCenter = math.abs(localPredicted.X) <= 1.5  -- по центру
+
             if localPredicted.X < -1.5 then
+                -- Влево
                 TriggerDive("Left", isHigh)
             elseif localPredicted.X > 1.5 then
+                -- Вправо
                 TriggerDive("Right", isHigh)
-            elseif isHigh and Settings.DiveAutoJump then
-                local hum = GetHumanoid()
-                if hum then hum.Jump = true end
+            elseif isCenter and isHigh then
+                -- Центр + высоко → прыжок
+                TriggerDive("Jump", false)
+            elseif isCenter then
+                -- Центр + низко/средне → FrontDive
+                TriggerDive("Front", false)
             end
         end
     end)
 end
 
 -- ============================================================
--- BALL PREDICTOR (Облегченный)
+-- BALL PREDICTOR
 -- ============================================================
 local function StartPredictor()
     if curveFolder then curveFolder:Destroy() end
     curveFolder = Instance.new("Folder", Workspace)
-    
+
     local segs = {}
     for i = 1, 15 do
         local s = Instance.new("Part", curveFolder)
@@ -255,54 +266,270 @@ local function StartPredictor()
 end
 
 -- ============================================================
--- ИНТЕРФЕЙС WindUI (Чистый и понятный)
+-- ИНТЕРФЕЙС WindUI
 -- ============================================================
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/dist/main.lua"))()
-local Window = WindUI:CreateWindow({ Title = "RSS GK Hub v3 | Mobile", Icon = "shield" })
+local Window = WindUI:CreateWindow({ Title = "RSS GK Hub v3.2 | Mobile", Icon = "shield" })
 
 -- ВКЛАДКА AUTO DIVE
 local DiveTab = Window:Tab({ Title = "Auto Dive", Icon = "zap" })
+
 DiveTab:Toggle({
-    Title = "Включить Auto Dive (v3)",
-    Desc = "Новая система основанная на предсказании времени до удара (TTI)",
+    Title = "Включить Auto Dive (v3.2)",
+    Desc = "Left / Right / Front / Jump — все типы дайва!",
     Default = false,
-    Callback = function(v) if v then StartAutoDive() else if DiveConn then DiveConn:Disconnect() DiveConn=nil end end end
+    Callback = function(v)
+        if v then StartAutoDive()
+        else if DiveConn then DiveConn:Disconnect() DiveConn = nil end end
+    end
 })
+
 DiveTab:Toggle({
     Title = "Компенсация Пинга",
-    Desc = "Дайв будет срабатывать чуть раньше при высоком пинге",
+    Desc = "Дайв срабатывает раньше при высоком пинге",
     Default = Settings.PingCompensation,
     Callback = function(v) Settings.PingCompensation = v end
 })
+
 DiveTab:Slider({
-    Title = "Время реакции (Сек до удара)",
-    Desc = "0.3 - Поздно, 0.45 - Рано. Если пропускаешь мячи, увеличь значение.",
+    Title = "Время реакции (сек до удара)",
+    Desc = "0.3 — Поздно | 0.45 — Рано. Если пропускаешь мячи, увеличь.",
     Step = 0.05,
     Value = { Min = 0.2, Max = 0.6, Default = 0.40 },
     Callback = function(v) Settings.DiveReactionTime = v end
 })
 
+DiveTab:Slider({
+    Title = "Дистанция реакции (стады)",
+    Desc = "Скрипт реагирует на мяч только в этом радиусе. 20 — близко, 60 — далеко.",
+    Step = 5,
+    Value = { Min = 10, Max = 80, Default = 40 },
+    Callback = function(v) Settings.DiveMaxDistance = v end
+})
+
+DiveTab:Toggle({
+    Title = "Авто-прыжок (высокие мячи)",
+    Desc = "Прыгать на мячи которые летят высоко по центру",
+    Default = Settings.DiveAutoJump,
+    Callback = function(v) Settings.DiveAutoJump = v end
+})
+
 -- ВКЛАДКА REACH
 local ReachTab = Window:Tab({ Title = "Reach & Visuals", Icon = "maximize" })
+
 ReachTab:Toggle({
     Title = "Включить Reach",
-    Desc = "Увеличивает радиус касания мяча (Оптимизировано)",
+    Desc = "Увеличивает радиус касания мяча",
     Default = false,
-    Callback = function(v) 
+    Callback = function(v)
         if v then ReachConn = RunService.Heartbeat:Connect(ReachLoop); UpdateHitbox(true)
-        else if ReachConn then ReachConn:Disconnect() ReachConn=nil end UpdateHitbox(false) end
+        else if ReachConn then ReachConn:Disconnect() ReachConn = nil end UpdateHitbox(false) end
     end
 })
+
 ReachTab:Slider({
     Title = "Размер Хитбокса",
     Step = 1,
     Value = { Min = 5, Max = 25, Default = 12 },
-    Callback = function(v) Settings.HitboxSize = Vector3.new(v, v, v); if ReachConn then UpdateHitbox(true) end end
+    Callback = function(v)
+        Settings.HitboxSize = Vector3.new(v, v, v)
+        if ReachConn then UpdateHitbox(true) end
+    end
 })
+
 ReachTab:Toggle({
     Title = "Траектория Мяча (Predictor)",
     Default = false,
-    Callback = function(v) if v then StartPredictor() else if predConn then predConn:Disconnect() end if curveFolder then curveFolder:Destroy() end end end
+    Callback = function(v)
+        if v then StartPredictor()
+        else
+            if predConn then predConn:Disconnect() end
+            if curveFolder then curveFolder:Destroy() end
+        end
+    end
 })
 
-WindUI:Notify({ Title = "Успешно!", Content = "GK Hub v3 (Mobile) загружен!", Duration = 5 })
+WindUI:Notify({
+    Title = "GK Hub v3.3 загружен!",
+    Content = "Новое: вкладка Нападающий — AutoShoot, AutoDeke, AutoTackle!",
+    Duration = 5
+})
+
+-- ============================================================
+-- НАПАДАЮЩИЙ — AUTO FUNCTIONS
+-- ============================================================
+
+local PlayerSettings = {
+    AutoShootDistance   = 15,
+    AutoShootPower      = true,
+    AutoDekeDistance    = 8,
+    AutoTackleDistance  = 6,
+}
+
+local lastShootTime  = 0
+local lastDekeTime   = 0
+local lastTackleTime = 0
+local AutoShootConn  = nil
+local AutoDekeConn   = nil
+local AutoTackleConn = nil
+
+-- Авто-удар: бьёт когда мяч рядом
+local function StartAutoShoot()
+    if AutoShootConn then AutoShootConn:Disconnect() end
+    AutoShootConn = RunService.Heartbeat:Connect(function()
+        local root = GetRoot()
+        local ball = FindBall()
+        if not root or not ball then return end
+
+        local dist = (ball.Position - root.Position).Magnitude
+        if dist > PlayerSettings.AutoShootDistance then return end
+
+        local now = tick()
+        if now - lastShootTime < 1.0 then return end -- кулдаун 1 сек
+        lastShootTime = now
+
+        if PlayerSettings.AutoShootPower then
+            FireButton("PowerShoot")
+        else
+            -- Обычный удар через Pass если нет PowerShoot
+            FireButton("Pass")
+        end
+    end)
+end
+
+-- Авто-финт: делает финт когда рядом соперник с мячом
+local function StartAutoDeke()
+    if AutoDekeConn then AutoDekeConn:Disconnect() end
+    AutoDekeConn = RunService.Heartbeat:Connect(function()
+        local root = GetRoot()
+        local ball = FindBall()
+        if not root or not ball then return end
+
+        -- Финт только если мяч у нас (рядом)
+        local distToBall = (ball.Position - root.Position).Magnitude
+        if distToBall > 5 then return end
+
+        -- Проверяем есть ли рядом соперник
+        local nearEnemy = false
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local enemyRoot = player.Character:FindFirstChild("HumanoidRootPart")
+                if enemyRoot then
+                    local dist = (enemyRoot.Position - root.Position).Magnitude
+                    if dist < PlayerSettings.AutoDekeDistance then
+                        nearEnemy = true
+                        break
+                    end
+                end
+            end
+        end
+
+        if not nearEnemy then return end
+
+        local now = tick()
+        if now - lastDekeTime < 1.5 then return end
+        lastDekeTime = now
+
+        FireButton("Deke")
+    end)
+end
+
+-- Авто-подкат: делает подкат когда соперник с мячом рядом
+local function StartAutoTackle()
+    if AutoTackleConn then AutoTackleConn:Disconnect() end
+    AutoTackleConn = RunService.Heartbeat:Connect(function()
+        local root = GetRoot()
+        local ball = FindBall()
+        if not root or not ball then return end
+
+        -- Подкат только если мяч НЕ у нас
+        local distToBall = (ball.Position - root.Position).Magnitude
+        if distToBall < 5 then return end -- мяч рядом = наш, не надо подкатывать
+
+        -- Проверяем есть ли соперник с мячом рядом
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character then
+                local enemyRoot = player.Character:FindFirstChild("HumanoidRootPart")
+                if enemyRoot then
+                    local distToEnemy = (enemyRoot.Position - root.Position).Magnitude
+                    local enemyDistToBall = (ball.Position - enemyRoot.Position).Magnitude
+
+                    -- Соперник рядом И у него мяч
+                    if distToEnemy < PlayerSettings.AutoTackleDistance and enemyDistToBall < 6 then
+                        local now = tick()
+                        if now - lastTackleTime < 2.0 then return end
+                        lastTackleTime = now
+                        FireButton("Tackle")
+                        break
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- ============================================================
+-- ВКЛАДКА НАПАДАЮЩИЙ
+-- ============================================================
+local PlayerTab = Window:Tab({ Title = "Нападающий", Icon = "zap" })
+
+PlayerTab:Toggle({
+    Title = "Авто-удар (AutoShoot)",
+    Desc = "Автоматически бьёт по воротам когда мяч рядом",
+    Default = false,
+    Callback = function(v)
+        if v then StartAutoShoot()
+        else if AutoShootConn then AutoShootConn:Disconnect() AutoShootConn = nil end end
+    end
+})
+
+PlayerTab:Toggle({
+    Title = "Использовать PowerShoot",
+    Desc = "Бить сильным ударом вместо обычного",
+    Default = PlayerSettings.AutoShootPower,
+    Callback = function(v) PlayerSettings.AutoShootPower = v end
+})
+
+PlayerTab:Slider({
+    Title = "Дистанция удара (стады)",
+    Desc = "Как близко к воротам бить. 10 — очень близко, 25 — издалека.",
+    Step = 1,
+    Value = { Min = 5, Max = 30, Default = 15 },
+    Callback = function(v) PlayerSettings.AutoShootDistance = v end
+})
+
+PlayerTab:Toggle({
+    Title = "Авто-финт (AutoDeke)",
+    Desc = "Делает финт когда соперник близко и мяч у тебя",
+    Default = false,
+    Callback = function(v)
+        if v then StartAutoDeke()
+        else if AutoDekeConn then AutoDekeConn:Disconnect() AutoDekeConn = nil end end
+    end
+})
+
+PlayerTab:Slider({
+    Title = "Дистанция финта (стады)",
+    Desc = "На какой дистанции от соперника делать финт",
+    Step = 1,
+    Value = { Min = 3, Max = 15, Default = 8 },
+    Callback = function(v) PlayerSettings.AutoDekeDistance = v end
+})
+
+PlayerTab:Toggle({
+    Title = "Авто-подкат (AutoTackle)",
+    Desc = "Подкатывает когда соперник с мячом рядом",
+    Default = false,
+    Callback = function(v)
+        if v then StartAutoTackle()
+        else if AutoTackleConn then AutoTackleConn:Disconnect() AutoTackleConn = nil end end
+    end
+})
+
+PlayerTab:Slider({
+    Title = "Дистанция подката (стады)",
+    Desc = "Как близко должен быть соперник чтобы подкатить",
+    Step = 1,
+    Value = { Min = 3, Max = 12, Default = 6 },
+    Callback = function(v) PlayerSettings.AutoTackleDistance = v end
+})
