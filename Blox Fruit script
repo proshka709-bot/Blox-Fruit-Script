@@ -1,15 +1,14 @@
 --[[
-    ⚽ RSS GK HUB — 7v7 УЛУЧШЕННЫЙ v3.0 (PERFORMANCE & SAVE EDITION)
+    ⚽ RSS GK HUB — 7v7 УЛУЧШЕННЫЙ v3.0 (MOBILE EDITION)
     ★ Убран лишний мусор (Auto-Pick, бесполезные чекеры ролей).
     ★ УЛУЧШЕННЫЙ AUTO DIVE: Теперь использует Time-To-Impact (TTI) и компенсацию ПИНГА.
-    ★ ПОДДЕРЖКА ПК: Автоматически прожимает Q, E и Пробел.
+    ★ ТОЛЬКО МОБАЙЛ: Нажимает экранные кнопки интерфейса.
     ★ Оптимизированный Reach: больше не вызывает лаги из-за спама касаний.
 ]]
 
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local Workspace         = game:GetService("Workspace")
-local VirtualInput      = game:GetService("VirtualInputManager")
 local Stats             = game:GetService("Stats")
 local LocalPlayer       = Players.LocalPlayer
 
@@ -22,7 +21,6 @@ local Settings = {
     DiveReactionTime    = 0.40,      -- За сколько секунд до удара прыгать (0.3 - 0.5 идеально)
     DiveAutoJump        = true,      -- Авто-прыжок при высоком мяче
     PingCompensation    = true,      -- Учитывать пинг сервера (КРИТИЧЕСКИ ВАЖНО ДЛЯ СЕЙВОВ)
-    PC_Keybinds         = true,      -- Прожимать Q/E/Space для ПК игроков
 
     -- Рич
     HitboxSize          = Vector3.new(12, 10, 12),
@@ -116,16 +114,17 @@ local function ReachLoop()
 end
 
 -- ============================================================
--- AUTO DIVE (НОВАЯ СВЕРХТОЧНАЯ МАТЕМАТИКА)
+-- AUTO DIVE (МОБИЛЬНЫЕ КНОПКИ)
 -- ============================================================
 
-local function PressKey(keyCode)
-    VirtualInput:SendKeyEvent(true, keyCode, false, game)
-    task.delay(0.1, function() VirtualInput:SendKeyEvent(false, keyCode, false, game) end)
-end
-
 local function TriggerDive(direction, isHigh)
-    -- 1. Мобильный интерфейс
+    -- Прыжок для высоких мячей
+    if isHigh and Settings.DiveAutoJump then
+        local hum = GetHumanoid()
+        if hum then hum.Jump = true end
+    end
+
+    -- Нажатие кнопок мобильного интерфейса
     local gui = LocalPlayer:FindFirstChild("PlayerGui")
     if gui then
         pcall(function()
@@ -139,16 +138,6 @@ local function TriggerDive(direction, isHigh)
                 end
             end
         end)
-    end
-
-    -- 2. ПК Эмуляция (Q = Лево, E = Право, Пробел = Вверх)
-    if Settings.PC_Keybinds then
-        if isHigh and Settings.DiveAutoJump then PressKey(Enum.KeyCode.Space) end
-        if direction == "Left" then
-            PressKey(Enum.KeyCode.Q)
-        elseif direction == "Right" then
-            PressKey(Enum.KeyCode.E)
-        end
     end
 end
 
@@ -192,8 +181,9 @@ local function StartAutoDive()
                 TriggerDive("Left", isHigh)
             elseif localPredicted.X > 1.5 then
                 TriggerDive("Right", isHigh)
-            elseif isHigh then
-                if Settings.PC_Keybinds then PressKey(Enum.KeyCode.Space) end
+            elseif isHigh and Settings.DiveAutoJump then
+                local hum = GetHumanoid()
+                if hum then hum.Jump = true end
             end
         end
     end)
@@ -268,7 +258,7 @@ end
 -- ИНТЕРФЕЙС WindUI (Чистый и понятный)
 -- ============================================================
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/refs/heads/main/dist/main.lua"))()
-local Window = WindUI:CreateWindow({ Title = "RSS GK Hub v3 | Optimize", Icon = "shield" })
+local Window = WindUI:CreateWindow({ Title = "RSS GK Hub v3 | Mobile", Icon = "shield" })
 
 -- ВКЛАДКА AUTO DIVE
 local DiveTab = Window:Tab({ Title = "Auto Dive", Icon = "zap" })
@@ -283,12 +273,6 @@ DiveTab:Toggle({
     Desc = "Дайв будет срабатывать чуть раньше при высоком пинге",
     Default = Settings.PingCompensation,
     Callback = function(v) Settings.PingCompensation = v end
-})
-DiveTab:Toggle({
-    Title = "Использовать клавиши (ПК)",
-    Desc = "Скрипт будет нажимать Q, E и Пробел вместо поиска кнопок на экране",
-    Default = Settings.PC_Keybinds,
-    Callback = function(v) Settings.PC_Keybinds = v end
 })
 DiveTab:Slider({
     Title = "Время реакции (Сек до удара)",
@@ -321,4 +305,4 @@ ReachTab:Toggle({
     Callback = function(v) if v then StartPredictor() else if predConn then predConn:Disconnect() end if curveFolder then curveFolder:Destroy() end end end
 })
 
-WindUI:Notify({ Title = "Успешно!", Content = "GK Hub v3 загружен. Оптимизирован дайв!", Duration = 5 })
+WindUI:Notify({ Title = "Успешно!", Content = "GK Hub v3 (Mobile) загружен!", Duration = 5 })
